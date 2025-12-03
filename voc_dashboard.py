@@ -376,63 +376,64 @@ with tab1:
     )
 
 # ====================================================
-# TAB 2 — 비매칭(X) = 활동대상
+# TAB 2 — 비매칭(X) = 활동대상  (버튼 방식 / 리스크필터 제거)
 # ====================================================
 with tab2:
-    st.subheader("🚨 비매칭(X) 활동대상 리스크 리스트")
+    st.subheader("🚨 비매칭(X) 활동대상 — 지사 / 담당자 선택 방식")
 
     if unmatched_global.empty:
         st.info("현재 글로벌 필터 조건에서 비매칭(X) 데이터가 없습니다.")
     else:
-        b1, b2, b3 = st.columns(3)
 
-        # 지사 선택 (글로벌 필터 이후 남아있는 지사)
-        ub_branches = sort_branch(
+        # -------------------------------
+        # 지사 버튼 생성
+        # -------------------------------
+        branches_raw = sort_branch(
             unmatched_global["관리지사"].dropna().unique()
         )
-        sel_b = b1.multiselect(
-            "지사 선택 (추가 필터)",
-            options=ub_branches,
-            default=ub_branches,
+
+        branch_buttons = ["전체"] + branches_raw
+
+        selected_branch = st.radio(
+            "지사 선택",
+            options=branch_buttons,
+            horizontal=True
         )
 
-        # 담당자 선택
-        tmp_branch = unmatched_global.copy()
-        if sel_b:
-            tmp_branch = tmp_branch[tmp_branch["관리지사"].isin(sel_b)]
+        # 지사 필터 적용
+        temp = unmatched_global.copy()
+        if selected_branch != "전체":
+            temp = temp[temp["관리지사"] == selected_branch]
 
-        mgr_opts = sorted(
-            tmp_branch["구역담당자_통합"]
+        # -------------------------------
+        # 담당자 버튼 (지사 선택 시 동적 생성)
+        # -------------------------------
+        mgr_list = (
+            temp["구역담당자_통합"]
             .dropna()
             .astype(str)
             .unique()
             .tolist()
         )
-        sel_mgr = b2.multiselect(
+
+        mgr_buttons = ["전체"] + sorted(mgr_list)
+
+        selected_mgr = st.radio(
             "담당자 선택",
-            options=mgr_opts,
-            default=mgr_opts,
+            options=mgr_buttons,
+            horizontal=True
         )
 
-        # 리스크 추가 필터
-        risk_opts = ["HIGH", "MEDIUM", "LOW"]
-        sel_r2 = b3.multiselect(
-            "리스크 등급(추가 필터)",
-            options=risk_opts,
-            default=risk_opts,
-        )
+        # 담당자 필터 적용
+        if selected_mgr != "전체":
+            temp = temp[temp["구역담당자_통합"] == selected_mgr]
 
-        temp = unmatched_global.copy()
-        if sel_b:
-            temp = temp[temp["관리지사"].isin(sel_b)]
-        if sel_mgr:
-            temp = temp[temp["구역담당자_통합"].astype(str).isin(sel_mgr)]
-        if sel_r2:
-            temp = temp[temp["리스크등급"].isin(sel_r2)]
-
+        # -------------------------------
+        # 결과 정렬 + 표시
+        # -------------------------------
         temp = temp.sort_values("접수일시", ascending=False)
 
-        st.write(f"⚠ 활동대상 비매칭 건수: **{len(temp):,} 건**")
+        st.write(f"총 활동대상 : **{len(temp):,} 건**")
 
         st.dataframe(
             style_risk(temp[display_cols]),
@@ -440,13 +441,13 @@ with tab2:
             height=450,
         )
 
+        # 다운로드 기능
         st.download_button(
-            "📥 현재 필터 기준 비매칭 리스트 다운로드 (CSV)",
+            "📥 현재 조건 비매칭 리스트 다운로드 (CSV)",
             temp.to_csv(index=False).encode("utf-8-sig"),
-            file_name="비매칭_활동대상_리스트.csv",
+            file_name="비매칭_활동대상.csv",
             mime="text/csv",
         )
-
 # ====================================================
 # TAB 3 — 지사/담당자 현황 (시각화)
 # ====================================================
