@@ -6,24 +6,38 @@ import pandas as pd
 import streamlit as st
 
 # ----------------------------------------------------
-# 0. 기본 설정
+# 0. 기본 설정 + 라이트 스타일 강제
 # ----------------------------------------------------
 st.set_page_config(page_title="해지 VOC 종합 대시보드", layout="wide")
 
+# 다크 모드여도 항상 흰 배경 + 검정 글씨로 보이도록 CSS 적용
+st.markdown(
+    """
+    <style>
+    .stApp {
+        background-color: #ffffff !important;
+        color: #000000 !important;
+    }
+    .stDataFrame th, .stDataFrame td {
+        color: #000000 !important;
+    }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
 
 # ----------------------------------------------------
 # 1. 데이터 로딩 (GitHub 내 merged.xlsx 사용)
 # ----------------------------------------------------
 @st.cache_data
 def load_data() -> pd.DataFrame:
-    # 로컬(Mac/Windows)에서 테스트할 땐 적절히 바꿔도 됨
-    default_path = "merged.xlsx"
+    file_path = "merged.xlsx"  # GitHub repo 루트에 있어야 함
 
-    if not os.path.exists(default_path):
+    if not os.path.exists(file_path):
         st.error(f"❌ GitHub 저장소에서 'merged.xlsx' 파일을 찾을 수 없습니다.")
         return pd.DataFrame()
 
-    df = pd.read_excel(default_path)
+    df = pd.read_excel(file_path)
 
     # 숫자형 컬럼 콤마 제거 (계약번호/고객번호)
     for col in ["계약번호", "고객번호"]:
@@ -108,7 +122,7 @@ def pick_manager(row):
 
 df["구역담당자_통합"] = df.apply(pick_manager, axis=1)
 
-# 주소 컬럼 자동 탐색
+# 주소 컬럼 자동 탐색 (검색에만 사용)
 address_cols = [c for c in df.columns if "주소" in c]
 
 # ----------------------------------------------------
@@ -124,7 +138,7 @@ other_sets = {
 
 other_union = set().union(*other_sets.values())
 
-# VOC ∧ 기타 출처 있음 → 매칭(O)
+# VOC ∧ 기타 출처 있음 → 매칭(O), 없으면 비매칭(X)
 df_voc["매칭여부"] = df_voc["계약번호_정제"].apply(
     lambda x: "매칭(O)" if x in other_union else "비매칭(X)"
 )
@@ -164,7 +178,29 @@ df_voc["경과일수"], df_voc["리스크등급"] = zip(
 df_unmatched = df_voc[df_voc["매칭여부"] == "비매칭(X)"].copy()
 
 # ----------------------------------------------------
-# 6. 공통 표시 컬럼 정의
+# 6. 피드백(고객대응/현장처리) in-memory 저장 구조
+# ----------------------------------------------------
+FEEDBACK_COLS = ["계약번호_정제", "고객대응사항", "등록자", "등록일자", "비고"]
+
+if "feedback_df" not in st.session_state:
+    st.session_state["feedback_df"] = pd.DataFrame(columns=FEEDBACK_COLS)
+
+
+def attach_feedback(df_in: pd.DataFrame) -> pd.DataFrame:
+    """계약번호_정제 기준으로 최신 피드백 1건을 붙여준다."""
+    fb = st.session_state.get("feedback_df", pd.DataFrame(columns=FEEDBACK_COLS))
+    if fb.empty or "계약번호_정제" not in df_in.columns:
+        return df_in
+
+    fb_sorted = fb.sort_values("등록일자")
+    fb_last = fb_sorted.groupby("계약번호_정제").last().reset_index()
+
+    merged = df_in.merge(fb_last, on="계약번호_정제", how="left")
+    return merged
+
+
+# ----------------------------------------------------
+# 7. 공통 표시 컬럼 정의
 # ----------------------------------------------------
 exclude_cols = {
     "기타출처",
@@ -207,9 +243,13 @@ fixed_order = [
 
 display_cols = [c for c in fixed_order if c in df_voc.columns]
 
+# 피드백 컬럼도 표시 순서에 추가
+for c in ["고객대응사항", "등록자", "등록일자", "비고"]:
+    if c not in display_cols:
+        display_cols.append(c)
 
 # ----------------------------------------------------
-# 7. 스타일링 (리스크 등급 색상 강조)
+# 8. 스타일링 (리스크 등급 색상 강조)
 # ----------------------------------------------------
 def style_risk(df_view: pd.DataFrame):
     if "리스크등급" not in df_view.columns:
@@ -229,7 +269,7 @@ def style_risk(df_view: pd.DataFrame):
 
 
 # ----------------------------------------------------
-# 8. 사이드바 - 글로벌 필터
+# 9. 사이드바 - 글로벌 필터
 # ----------------------------------------------------
 st.sidebar.title("🔧 글로벌 필터")
 
@@ -276,7 +316,7 @@ st.sidebar.caption(
 )
 
 # ----------------------------------------------------
-# 9. 글로벌 필터 적용
+# 10. 글로벌 필터 적용
 # ----------------------------------------------------
 voc_filtered_global = df_voc.copy()
 
@@ -312,29 +352,29 @@ unmatched_global = voc_filtered_global[
 ].copy()
 
 # ----------------------------------------------------
-# 10. 헤더 & 상단 KPI
+# 11. 헤더 & 상단 KPI
 # ----------------------------------------------------
 st.markdown("## 📊 해지 VOC 종합 대시보드 (엔터프라이즈 버전)")
 
-c1, c2, c3, c4 = st.columns(4)
+k1, k2, k3, k4 = st.columns(4)
 
 total_voc = len(voc_filtered_global)
 unique_cn = voc_filtered_global["계약번호_정제"].nunique()
 unmatched_cnt = (voc_filtered_global["매칭여부"] == "비매칭(X)").sum()
 matched_cnt = (voc_filtered_global["매칭여부"] == "매칭(O)").sum()
 
-c1.metric("전체 VOC 건수", f"{total_voc:,}")
-c2.metric("유니크 계약 수", f"{unique_cn:,}")
-c3.metric("비매칭(X) 활동대상", f"{unmatched_cnt:,}")
-c4.metric("매칭(O) 건수", f"{matched_cnt:,}")
+k1.metric("전체 VOC 건수", f"{total_voc:,}")
+k2.metric("유니크 계약 수", f"{unique_cn:,}")
+k3.metric("비매칭(X) 활동대상", f"{unmatched_cnt:,}")
+k4.metric("매칭(O) 건수", f"{matched_cnt:,}")
 
 st.markdown("---")
 
 # ----------------------------------------------------
-# 11. 탭 구성
+# 12. 탭 구성
 # ----------------------------------------------------
 tab1, tab2, tab3, tab4 = st.tabs(
-    ["📘 VOC 전체", "🚨 비매칭(활동대상)", "📊 지사/담당자 시각화", "🔍 계약번호/상호 드릴다운"]
+    ["📘 VOC 전체", "🚨 비매칭(활동대상)", "📊 지사/담당자 시각화", "🔍 계약번호 통합 드릴다운"]
 )
 
 # ====================================================
@@ -367,16 +407,19 @@ with tab1:
 
     temp = temp.sort_values("접수일시", ascending=False)
 
-    st.write(f"표시 건수: **{len(temp):,} 건**")
+    temp_view = attach_feedback(temp)
+    cols_to_show = [c for c in display_cols if c in temp_view.columns]
+
+    st.write(f"표시 건수: **{len(temp_view):,} 건**")
 
     st.dataframe(
-        style_risk(temp[display_cols]),
+        style_risk(temp_view[cols_to_show]),
         use_container_width=True,
         height=520,
     )
 
 # ====================================================
-# TAB 2 — 비매칭(X) = 활동대상 (버튼 방식)
+# TAB 2 — 비매칭(X) = 활동대상 (피드백 입력 포함)
 # ====================================================
 with tab2:
     st.subheader("🚨 비매칭(X) 활동대상 — 지사 / 담당자 기준 리스트")
@@ -384,7 +427,7 @@ with tab2:
     if unmatched_global.empty:
         st.info("현재 글로벌 필터 조건에서 비매칭(X) 데이터가 없습니다.")
     else:
-        # 지사 버튼
+        # 1) 지사 선택
         branches_raw = sort_branch(unmatched_global["관리지사"].dropna().unique())
         branch_buttons = ["전체"] + branches_raw
 
@@ -399,7 +442,7 @@ with tab2:
         if selected_branch != "전체":
             temp2 = temp2[temp2["관리지사"] == selected_branch]
 
-        # 담당자 버튼 (동적)
+        # 2) 담당자 선택
         mgr_list = (
             temp2["구역담당자_통합"]
             .dropna()
@@ -421,20 +464,89 @@ with tab2:
 
         temp2 = temp2.sort_values("접수일시", ascending=False)
 
-        st.write(f"총 활동대상: **{len(temp2):,} 건**")
+        # 3) 피드백 붙인 테이블
+        temp2_view = attach_feedback(temp2)
+        cols_to_show = [c for c in display_cols if c in temp2_view.columns]
+
+        st.write(f"총 활동대상: **{len(temp2_view):,} 건**")
 
         st.dataframe(
-            style_risk(temp2[display_cols]),
+            style_risk(temp2_view[cols_to_show]),
             use_container_width=True,
-            height=450,
+            height=360,
         )
 
         st.download_button(
             "📥 비매칭 활동대상 다운로드 (CSV)",
-            temp2.to_csv(index=False).encode("utf-8-sig"),
+            temp2_view.to_csv(index=False).encode("utf-8-sig"),
             file_name="비매칭_활동대상.csv",
             mime="text/csv",
         )
+
+        st.markdown("---")
+
+        # 4) 피드백 입력 폼
+        st.markdown("### ✏️ 고객 대응 / 현장 처리 내용 등록")
+
+        cn_options = (
+            temp2["계약번호_정제"]
+            .dropna()
+            .astype(str)
+            .unique()
+            .tolist()
+        )
+
+        if not cn_options:
+            st.info("선택된 지사/담당자에 해당하는 계약이 없습니다.")
+        else:
+            f1, f2 = st.columns([1, 2])
+
+            sel_cn_fb = f1.selectbox(
+                "계약번호 선택",
+                options=cn_options,
+                key="tab2_feedback_cn",
+            )
+
+            # 선택된 계약 요약 정보
+            info_row = temp2[temp2["계약번호_정제"] == sel_cn_fb].iloc[0]
+            f1.write(f"**상호:** {info_row.get('상호', '')}")
+            f1.write(f"**지사:** {info_row.get('관리지사', '')}")
+            f1.write(f"**담당자:** {info_row.get('구역담당자_통합', '')}")
+
+            with f2:
+                txt_feedback = st.text_area(
+                    "고객대응 / 현장 처리내용",
+                    key="tab2_feedback_text",
+                    placeholder="고객 통화내용, 현장 방문 처리내용, 후속 계획 등을 입력하세요.",
+                )
+                col_f1, col_f2 = st.columns(2)
+                reg_user = col_f1.text_input("등록자", key="tab2_feedback_user")
+                remark = col_f2.text_input("비고", key="tab2_feedback_remark")
+
+                if st.button("💾 피드백 저장", key="tab2_feedback_save"):
+                    if not txt_feedback.strip():
+                        st.warning("고객대응/처리내용을 입력해주세요.")
+                    elif not reg_user.strip():
+                        st.warning("등록자를 입력해주세요.")
+                    else:
+                        new_row = pd.DataFrame(
+                            [
+                                {
+                                    "계약번호_정제": sel_cn_fb,
+                                    "고객대응사항": txt_feedback.strip(),
+                                    "등록자": reg_user.strip(),
+                                    "등록일자": datetime.now().strftime(
+                                        "%Y-%m-%d %H:%M:%S"
+                                    ),
+                                    "비고": remark.strip(),
+                                }
+                            ]
+                        )
+                        st.session_state["feedback_df"] = pd.concat(
+                            [st.session_state["feedback_df"], new_row],
+                            ignore_index=True,
+                        )
+                        st.success("피드백이 저장되었습니다. (현재 세션 기준으로 즉시 반영됩니다.)")
 
 # ====================================================
 # TAB 3 — 지사/담당자 시각화 (5개 시각화)
@@ -493,6 +605,7 @@ with tab3:
             st.bar_chart(risk_dist)
 
         # 4) 일별 비매칭 추이
+        trend = None
         if "접수일시" in unmatched_global.columns:
             trend = (
                 unmatched_global.assign(접수일=unmatched_global["접수일시"].dt.date)
@@ -507,125 +620,157 @@ with tab3:
                 st.line_chart(trend)
 
         # 5) 누적 비매칭 추세
-        if "접수일시" in unmatched_global.columns:
+        if trend is not None:
             cum = trend.cumsum()
             st.markdown("#### 5️⃣ 📊 누적 비매칭 계약 수 추세")
             st.area_chart(cum)
 
 # ====================================================
-# TAB 4 — 계약번호 / 상호 드릴다운
+# TAB 4 — 계약번호 단위 통합 드릴다운
 # ====================================================
 with tab4:
-    st.subheader("🔍 계약번호 / 상호 기반 VOC + 기타출처 드릴다운")
+    st.subheader("🔍 계약번호 기준 통합 VOC 이력 조회")
 
-    # 1) 지사 선택
-    branches_raw = sort_branch(df_voc["관리지사"].dropna().unique())
-    branch_buttons = ["전체"] + branches_raw
+    # 1) 검색 조건
+    colA, colB = st.columns(2)
+    search_cn = colA.text_input("계약번호(일부 가능)", key="tab4_search_cn")
+    search_name = colB.text_input("상호(일부 가능)", key="tab4_search_name")
 
-    selected_branch = st.radio(
-        "지사 선택",
-        options=branch_buttons,
-        horizontal=True,
-        key="tab4_branch",
-    )
+    search_df = df.copy()
 
-    temp = df_voc.copy()
-    if selected_branch != "전체":
-        temp = temp[temp["관리지사"] == selected_branch]
-
-    # 2) 담당자 선택
-    mgr_list = (
-        temp["구역담당자_통합"]
-        .dropna()
-        .astype(str)
-        .unique()
-        .tolist()
-    )
-    mgr_buttons = ["전체"] + sorted(mgr_list)
-
-    selected_mgr = st.radio(
-        "담당자 선택",
-        options=mgr_buttons,
-        horizontal=True,
-        key="tab4_mgr",
-    )
-
-    temp2 = temp.copy()
-    if selected_mgr != "전체":
-        temp2 = temp2[temp2["구역담당자_통합"] == selected_mgr]
-
-    # 3) 검색 영역 (계약번호 / 상호)
-    c1, c2, c3 = st.columns([1.2, 1.2, 0.7])
-
-    input_cn = c1.text_input(
-        "계약번호 (일부 입력 가능)", key="tab4_cn"
-    )
-    input_name = c2.text_input(
-        "상호 (일부 입력 가능)", key="tab4_name"
-    )
-    _ = c3.button("🔍 검색", key="tab4_search_btn")  # UI용 버튼 (필터는 입력값 기반 자동 반영)
-
-    # 4) 입력값 기반 필터링 (버튼 여부와 상관없이 항상 적용)
-    result_df = temp2.copy()
-
-    if input_cn.strip():
-        key = input_cn.strip()
-        result_df = result_df[
-            result_df["계약번호_정제"].astype(str).str.contains(key, na=False)
+    if search_cn.strip():
+        search_df = search_df[
+            search_df["계약번호_정제"].astype(str).str.contains(search_cn.strip(), na=False)
+        ]
+    if search_name.strip():
+        search_df = search_df[
+            search_df["상호"].astype(str).str.contains(search_name.strip(), na=False)
         ]
 
-    if input_name.strip() and "상호" in result_df.columns:
-        key = input_name.strip()
-        result_df = result_df[
-            result_df["상호"].astype(str).str.contains(key, na=False)
-        ]
-
-    # 검색 결과 → 계약번호 리스트
     cn_candidates = (
-        result_df["계약번호_정제"]
+        search_df["계약번호_정제"]
         .dropna()
         .astype(str)
         .unique()
         .tolist()
     )
 
-    if len(cn_candidates) == 0:
-        st.info("조건에 맞는 계약번호가 없습니다. (지사/담당자/계약번호/상호 조건 확인)")
+    if not cn_candidates:
+        st.info("검색 조건에 해당하는 계약번호가 없습니다.")
     else:
         sel_cn = st.selectbox(
             "조회할 계약번호 선택",
-            options=["(선택)"] + cn_candidates,
+            options=cn_candidates,
             key="tab4_cn_select",
         )
 
-        if sel_cn != "(선택)":
-            st.markdown(f"### 📌 조회된 계약번호: `{sel_cn}`")
+        # ---------------------------------------------------------
+        # 2) VOC 상세 (최신 접수일시 우선)
+        # ---------------------------------------------------------
+        voc_detail = df_voc[df_voc["계약번호_정제"] == sel_cn].copy()
+        voc_detail = voc_detail.sort_values("접수일시", ascending=False)
 
-            voc_detail = df_voc[df_voc["계약번호_정제"] == sel_cn].copy()
-            voc_detail = voc_detail.sort_values("접수일시", ascending=False)
+        # ---------------------------------------------------------
+        # 3) 기타 출처 상세
+        # ---------------------------------------------------------
+        others_detail = df_other[df_other["계약번호_정제"] == sel_cn].copy()
 
-            others_detail = df_other[df_other["계약번호_정제"] == sel_cn].copy()
+        # ---------------------------------------------------------
+        # 4) 피드백 / 현장 처리 내역 (계약번호 단위 전체)
+        # ---------------------------------------------------------
+        fb_all = st.session_state.get("feedback_df", pd.DataFrame(columns=FEEDBACK_COLS))
+        fb_rows = fb_all[fb_all["계약번호_정제"] == sel_cn].copy()
+        fb_rows = fb_rows.sort_values("등록일자", ascending=False)
 
-            cc1, cc2 = st.columns(2)
+        if not fb_rows.empty:
+            feedback_text = "\n".join(
+                [
+                    f"[{row['등록일자']}] ({row['등록자']})\n"
+                    f"고객대응: {row['고객대응사항']}\n"
+                    f"비고: {row['비고']}\n"
+                    for _, row in fb_rows.iterrows()
+                ]
+            )
+        else:
+            feedback_text = "등록된 고객 대응/현장 처리 이력이 없습니다."
 
-            with cc1:
-                st.markdown("#### 📘 해지 VOC 이력")
-                if voc_detail.empty:
-                    st.info("VOC 이력 없음")
-                else:
-                    st.dataframe(
-                        style_risk(voc_detail[display_cols]),
-                        use_container_width=True,
-                        height=350,
-                    )
+        # ---------------------------------------------------------
+        # 5) 화면 표시
+        # ---------------------------------------------------------
+        st.markdown(f"### 📄 계약번호 `{sel_cn}` 통합 이력")
 
-            with cc2:
-                st.markdown("#### 📂 기타 출처 이력 (해지시설/요청/설변/정지/파이프라인)")
-                if others_detail.empty:
-                    st.info("기타 출처 데이터 없음")
-                else:
-                    st.dataframe(
-                        others_detail,
-                        use_container_width=True,
-                        height=350,
-                    )
+        c1, c2 = st.columns(2)
+
+        # VOC 이력
+        with c1:
+            st.markdown("#### 📘 해지VOC 접수 이력 (최신순)")
+            if voc_detail.empty:
+                st.info("해지VOC 이력 없음")
+            else:
+                voc_view = attach_feedback(voc_detail)
+                cols_v = [c for c in display_cols if c in voc_view.columns]
+                st.dataframe(
+                    style_risk(voc_view[cols_v]),
+                    use_container_width=True,
+                    height=300,
+                )
+
+        # 기타 출처 이력
+        with c2:
+            st.markdown("#### 📂 기타 출처 이력 (해지시설/요청/설변/정지/파이프라인)")
+            if others_detail.empty:
+                st.info("기타 출처 데이터 없음")
+            else:
+                st.dataframe(
+                    others_detail,
+                    use_container_width=True,
+                    height=300,
+                )
+
+        st.markdown("---")
+
+        # 통합 고객대응 / 현장 처리 이력
+        st.markdown("#### 📝 고객대응 / 현장 처리 통합 이력")
+        st.text_area(
+            "통합 고객대응·현장 처리 이력",
+            value=feedback_text,
+            height=230,
+            disabled=True,
+        )
+
+        st.markdown("### ✏️ 새로운 고객대응 / 현장 처리 내용 등록")
+
+        fb1, fb2 = st.columns([2, 1])
+
+        new_feedback = fb1.text_area(
+            "고객대응 / 현장 처리내역 입력",
+            placeholder="고객과의 통화, 방문 처리내용, 향후 조치 계획 등을 입력하세요.",
+            key="tab4_new_feedback",
+        )
+        new_user = fb2.text_input("등록자", key="tab4_new_user")
+        new_remark = fb2.text_input("비고", key="tab4_new_remark")
+
+        if st.button("💾 처리내역 저장", key="tab4_save_feedback"):
+            if not new_feedback.strip():
+                st.warning("내용을 입력하세요.")
+            elif not new_user.strip():
+                st.warning("등록자를 입력하세요.")
+            else:
+                new_row = pd.DataFrame(
+                    [
+                        {
+                            "계약번호_정제": sel_cn,
+                            "고객대응사항": new_feedback.strip(),
+                            "등록자": new_user.strip(),
+                            "등록일자": datetime.now().strftime(
+                                "%Y-%m-%d %H:%M:%S"
+                            ),
+                            "비고": new_remark.strip(),
+                        }
+                    ]
+                )
+                st.session_state["feedback_df"] = pd.concat(
+                    [st.session_state["feedback_df"], new_row],
+                    ignore_index=True,
+                )
+                st.success("처리내역이 저장되었습니다. 위 통합 이력에 즉시 반영됩니다.")
