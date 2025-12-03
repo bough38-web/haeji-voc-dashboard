@@ -512,54 +512,130 @@ with tab3:
             st.line_chart(trend)
 
 # ====================================================
-# TAB 4 — 계약번호 단위 드릴다운
+# TAB 4 — 계약번호 드릴다운 (지사/담당자/검색 개선)
 # ====================================================
 with tab4:
-    st.subheader("🔍 계약번호 기준 VOC + 기타 출처 통합 조회")
+    st.subheader("🔍 계약번호 기반 VOC + 기타 출처 통합 조회 (전문가 버전)")
 
-    # 글로벌 필터 적용된 VOC 기준으로 계약번호 목록
-    cn_list = (
-        voc_filtered_global["계약번호_정제"]
+    # ----------------------------------------------------
+    # 1) 지사 선택 (버튼)
+    # ----------------------------------------------------
+    branches_raw = sort_branch(df_voc["관리지사"].dropna().unique())
+    branch_buttons = ["전체"] + branches_raw
+
+    selected_branch = st.radio(
+        "지사 선택",
+        options=branch_buttons,
+        horizontal=True
+    )
+
+    temp = df_voc.copy()
+    if selected_branch != "전체":
+        temp = temp[temp["관리지사"] == selected_branch]
+
+    # ----------------------------------------------------
+    # 2) 담당자 선택 (동적 생성)
+    # ----------------------------------------------------
+    mgr_list = (
+        temp["구역담당자_통합"]
         .dropna()
         .astype(str)
         .unique()
         .tolist()
     )
-    cn_list = sorted(cn_list)
 
-    sel_cn = st.selectbox(
-        "조회할 계약번호(정제) 선택",
-        options=["(선택)"] + cn_list,
+    mgr_buttons = ["전체"] + sorted(mgr_list)
+
+    selected_mgr = st.radio(
+        "담당자 선택",
+        options=mgr_buttons,
+        horizontal=True
     )
 
-    if sel_cn and sel_cn != "(선택)":
-        # VOC 상세 (필터 반영)
-        voc_detail = voc_filtered_global[
-            voc_filtered_global["계약번호_정제"] == sel_cn
-        ].copy()
+    temp2 = temp.copy()
+    if selected_mgr != "전체":
+        temp2 = temp2[temp2["구역담당자_통합"] == selected_mgr]
+
+    # ----------------------------------------------------
+    # 3) 계약번호 / 상호 검색 입력
+    # ----------------------------------------------------
+    c1, c2, c3 = st.columns([1.2, 1.2, 0.7])
+
+    input_cn = c1.text_input("계약번호 (일부 입력 가능)")
+    input_name = c2.text_input("상호 (일부 입력 가능)")
+
+    search_clicked = c3.button("🔍 검색")
+
+    # ----------------------------------------------------
+    # 4) 검색 실행
+    # ----------------------------------------------------
+    result_df = temp2.copy()
+
+    if search_clicked:
+        # 계약번호 검색
+        if input_cn.strip():
+            key = input_cn.strip()
+            result_df = result_df[
+                result_df["계약번호_정제"].astype(str).str.contains(key, na=False)
+            ]
+
+        # 상호 검색
+        if input_name.strip() and "상호" in result_df.columns:
+            key = input_name.strip()
+            result_df = result_df[
+                result_df["상호"].astype(str).str.contains(key, na=False)
+            ]
+
+        # 검색결과가 1개 이상이면 계약번호 목록 표시
+        found_cn_list = (
+            result_df["계약번호_정제"].dropna().astype(str).unique().tolist()
+        )
+
+        if len(found_cn_list) == 0:
+            st.warning("검색 조건과 일치하는 계약번호가 없습니다.")
+            st.stop()
+
+        # 자동으로 하나만 남으면 바로 조회
+        if len(found_cn_list) == 1:
+            sel_cn = found_cn_list[0]
+        else:
+            sel_cn = st.selectbox("계약번호 선택", found_cn_list)
+
+    else:
+        sel_cn = None
+
+    # ----------------------------------------------------
+    # 5) 최종 조회 및 VOC / 기타출처 결과 표시
+    # ----------------------------------------------------
+    if sel_cn:
+        st.markdown(f"### 📌 조회된 계약번호: `{sel_cn}`")
+
+        # VOC 상세 (글로벌 필터는 무시하고 temp2 기준)
+        voc_detail = df_voc[df_voc["계약번호_정제"] == sel_cn].copy()
         voc_detail = voc_detail.sort_values("접수일시", ascending=False)
 
-        # 기타 출처 상세 (글로벌 필터와 무관하게 전체 df 기준)
+        # 기타 출처 (전체 df 기준 조회)
         others_detail = df_other[df_other["계약번호_정제"] == sel_cn].copy()
 
-        st.markdown(f"**선택한 계약번호(정제): `{sel_cn}`**")
         c1, c2 = st.columns(2)
 
+        # VOC
         with c1:
-            st.markdown("##### 📘 해지VOC 이력")
+            st.markdown("#### 📘 해지 VOC 이력")
             if voc_detail.empty:
-                st.info("해당 계약번호의 VOC 이력이 없습니다.")
+                st.info("VOC 이력 없음")
             else:
                 st.dataframe(
-                    voc_detail[display_cols],
+                    style_risk(voc_detail[display_cols]),
                     use_container_width=True,
                     height=350,
                 )
 
+        # 기타 출처
         with c2:
-            st.markdown("##### 📂 기타 출처 이력 (해지시설/요청/설변/정지/파이프라인)")
+            st.markdown("#### 📂 기타 출처 이력 (해지시설/요청/설변/정지/파이프라인)")
             if others_detail.empty:
-                st.info("기타 출처 데이터가 없습니다.")
+                st.info("기타 출처 데이터 없음")
             else:
                 st.dataframe(
                     others_detail,
