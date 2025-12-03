@@ -512,13 +512,13 @@ with tab3:
             st.line_chart(trend)
 
 # ====================================================
-# TAB 4 — 계약번호 드릴다운 (지사/담당자/검색 개선 + ID 중복 수정)
+# TAB 4 — 계약번호 드릴다운 (지사/담당자/검색 개선 + 상호 기반 드릴다운)
 # ====================================================
 with tab4:
-    st.subheader("🔍 계약번호 기반 VOC + 기타 출처 통합 조회 (전문가 버전)")
+    st.subheader("🔍 계약번호 / 상호 기반 VOC + 기타출처 드릴다운")
 
     # ----------------------------------------------------
-    # 1) 지사 선택 (radio + key 부여)
+    # 1) 지사 선택 (radio)
     # ----------------------------------------------------
     branches_raw = sort_branch(df_voc["관리지사"].dropna().unique())
     branch_buttons = ["전체"] + branches_raw
@@ -527,7 +527,7 @@ with tab4:
         "지사 선택",
         options=branch_buttons,
         horizontal=True,
-        key="drilldown_branch"        # ← 고유 key 지정
+        key="drilldown_branch"
     )
 
     temp = df_voc.copy()
@@ -535,7 +535,7 @@ with tab4:
         temp = temp[temp["관리지사"] == selected_branch]
 
     # ----------------------------------------------------
-    # 2) 담당자 선택 (동적 radio + key 부여)
+    # 2) 담당자 선택 (동적 radio)
     # ----------------------------------------------------
     mgr_list = (
         temp["구역담당자_통합"]
@@ -544,14 +544,13 @@ with tab4:
         .unique()
         .tolist()
     )
-
     mgr_buttons = ["전체"] + sorted(mgr_list)
 
     selected_mgr = st.radio(
         "담당자 선택",
         options=mgr_buttons,
         horizontal=True,
-        key="drilldown_manager"      # ← 고유 key 지정
+        key="drilldown_manager"
     )
 
     temp2 = temp.copy()
@@ -559,7 +558,7 @@ with tab4:
         temp2 = temp2[temp2["구역담당자_통합"] == selected_mgr]
 
     # ----------------------------------------------------
-    # 3) 검색 영역 (입력 + 버튼)
+    # 3) 검색 입력 (계약번호 + 상호)
     # ----------------------------------------------------
     c1, c2, c3 = st.columns([1.2, 1.2, 0.7])
 
@@ -575,20 +574,22 @@ with tab4:
     sel_cn = None
 
     if search_clicked:
-        # 계약번호 검색
+        # 4-1) 계약번호 검색
         if input_cn.strip():
             key = input_cn.strip()
             result_df = result_df[
                 result_df["계약번호_정제"].astype(str).str.contains(key, na=False)
             ]
 
-        # 상호 검색
-        if input_name.strip() and "상호" in result_df.columns:
+        # 4-2) 상호 검색
+        if input_name.strip():
             key = input_name.strip()
-            result_df = result_df[
-                result_df["상호"].astype(str).str.contains(key, na=False)
-            ]
+            if "상호" in result_df.columns:
+                result_df = result_df[
+                    result_df["상호"].astype(str).str.contains(key, na=False)
+                ]
 
+        # 4-3) 검색 결과 → 계약번호 리스트
         found_cn_list = (
             result_df["계약번호_정제"]
             .dropna()
@@ -598,14 +599,16 @@ with tab4:
         )
 
         if len(found_cn_list) == 0:
-            st.warning("검색 조건과 일치하는 계약번호가 없습니다.")
+            st.warning("검색 조건과 일치하는 계약번호 또는 상호가 없습니다.")
             st.stop()
 
+        # 검색 결과가 1개라면 바로 조회
         if len(found_cn_list) == 1:
             sel_cn = found_cn_list[0]
         else:
+            # 여러 계약번호가 검색되면 사용자에게 선택 입력 제공
             sel_cn = st.selectbox(
-                "계약번호 선택",
+                "조회할 계약번호 선택",
                 found_cn_list,
                 key="drilldown_cn_select"
             )
@@ -616,9 +619,11 @@ with tab4:
     if sel_cn:
         st.markdown(f"### 📌 조회된 계약번호: `{sel_cn}`")
 
+        # VOC 상세
         voc_detail = df_voc[df_voc["계약번호_정제"] == sel_cn].copy()
         voc_detail = voc_detail.sort_values("접수일시", ascending=False)
 
+        # 기타 출처 상세
         others_detail = df_other[df_other["계약번호_정제"] == sel_cn].copy()
 
         c1, c2 = st.columns(2)
@@ -636,9 +641,9 @@ with tab4:
                 )
 
         with c2:
-            st.markdown("#### 📂 기타 출처 이력")
+            st.markdown("#### 📂 기타 출처 이력 (해지시설/요청/설변/정지/파이프라인)")
             if others_detail.empty:
-                st.info("기타 출처 없음")
+                st.info("기타 출처 데이터 없음")
             else:
                 st.dataframe(
                     others_detail,
