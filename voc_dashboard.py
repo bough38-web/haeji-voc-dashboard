@@ -512,13 +512,13 @@ with tab3:
             st.line_chart(trend)
 
 # ====================================================
-# TAB 4 — 계약번호 드릴다운 (지사/담당자/검색 개선)
+# TAB 4 — 계약번호 드릴다운 (지사/담당자/검색 개선 + ID 중복 수정)
 # ====================================================
 with tab4:
     st.subheader("🔍 계약번호 기반 VOC + 기타 출처 통합 조회 (전문가 버전)")
 
     # ----------------------------------------------------
-    # 1) 지사 선택 (버튼)
+    # 1) 지사 선택 (radio + key 부여)
     # ----------------------------------------------------
     branches_raw = sort_branch(df_voc["관리지사"].dropna().unique())
     branch_buttons = ["전체"] + branches_raw
@@ -526,7 +526,8 @@ with tab4:
     selected_branch = st.radio(
         "지사 선택",
         options=branch_buttons,
-        horizontal=True
+        horizontal=True,
+        key="drilldown_branch"        # ← 고유 key 지정
     )
 
     temp = df_voc.copy()
@@ -534,7 +535,7 @@ with tab4:
         temp = temp[temp["관리지사"] == selected_branch]
 
     # ----------------------------------------------------
-    # 2) 담당자 선택 (동적 생성)
+    # 2) 담당자 선택 (동적 radio + key 부여)
     # ----------------------------------------------------
     mgr_list = (
         temp["구역담당자_통합"]
@@ -549,7 +550,8 @@ with tab4:
     selected_mgr = st.radio(
         "담당자 선택",
         options=mgr_buttons,
-        horizontal=True
+        horizontal=True,
+        key="drilldown_manager"      # ← 고유 key 지정
     )
 
     temp2 = temp.copy()
@@ -557,19 +559,20 @@ with tab4:
         temp2 = temp2[temp2["구역담당자_통합"] == selected_mgr]
 
     # ----------------------------------------------------
-    # 3) 계약번호 / 상호 검색 입력
+    # 3) 검색 영역 (입력 + 버튼)
     # ----------------------------------------------------
     c1, c2, c3 = st.columns([1.2, 1.2, 0.7])
 
-    input_cn = c1.text_input("계약번호 (일부 입력 가능)")
-    input_name = c2.text_input("상호 (일부 입력 가능)")
+    input_cn = c1.text_input("계약번호 (일부 입력 가능)", key="drilldown_cn")
+    input_name = c2.text_input("상호 (일부 입력 가능)", key="drilldown_name")
 
-    search_clicked = c3.button("🔍 검색")
+    search_clicked = c3.button("🔍 검색", key="drilldown_search_btn")
 
     # ----------------------------------------------------
-    # 4) 검색 실행
+    # 4) 검색 수행
     # ----------------------------------------------------
     result_df = temp2.copy()
+    sel_cn = None
 
     if search_clicked:
         # 계약번호 검색
@@ -586,40 +589,40 @@ with tab4:
                 result_df["상호"].astype(str).str.contains(key, na=False)
             ]
 
-        # 검색결과가 1개 이상이면 계약번호 목록 표시
         found_cn_list = (
-            result_df["계약번호_정제"].dropna().astype(str).unique().tolist()
+            result_df["계약번호_정제"]
+            .dropna()
+            .astype(str)
+            .unique()
+            .tolist()
         )
 
         if len(found_cn_list) == 0:
             st.warning("검색 조건과 일치하는 계약번호가 없습니다.")
             st.stop()
 
-        # 자동으로 하나만 남으면 바로 조회
         if len(found_cn_list) == 1:
             sel_cn = found_cn_list[0]
         else:
-            sel_cn = st.selectbox("계약번호 선택", found_cn_list)
-
-    else:
-        sel_cn = None
+            sel_cn = st.selectbox(
+                "계약번호 선택",
+                found_cn_list,
+                key="drilldown_cn_select"
+            )
 
     # ----------------------------------------------------
-    # 5) 최종 조회 및 VOC / 기타출처 결과 표시
+    # 5) 조회 결과 표시
     # ----------------------------------------------------
     if sel_cn:
         st.markdown(f"### 📌 조회된 계약번호: `{sel_cn}`")
 
-        # VOC 상세 (글로벌 필터는 무시하고 temp2 기준)
         voc_detail = df_voc[df_voc["계약번호_정제"] == sel_cn].copy()
         voc_detail = voc_detail.sort_values("접수일시", ascending=False)
 
-        # 기타 출처 (전체 df 기준 조회)
         others_detail = df_other[df_other["계약번호_정제"] == sel_cn].copy()
 
         c1, c2 = st.columns(2)
 
-        # VOC
         with c1:
             st.markdown("#### 📘 해지 VOC 이력")
             if voc_detail.empty:
@@ -629,16 +632,17 @@ with tab4:
                     style_risk(voc_detail[display_cols]),
                     use_container_width=True,
                     height=350,
+                    key="drilldown_voc_table"
                 )
 
-        # 기타 출처
         with c2:
-            st.markdown("#### 📂 기타 출처 이력 (해지시설/요청/설변/정지/파이프라인)")
+            st.markdown("#### 📂 기타 출처 이력")
             if others_detail.empty:
-                st.info("기타 출처 데이터 없음")
+                st.info("기타 출처 없음")
             else:
                 st.dataframe(
                     others_detail,
                     use_container_width=True,
                     height=350,
+                    key="drilldown_other_table"
                 )
