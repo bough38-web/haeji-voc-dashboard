@@ -28,7 +28,6 @@ st.markdown(
     .dataframe tbody tr:nth-child(even) {
         background-color: #eef2ff;
     }
-    /* 섹션 헤더 간격 */
     h2, h3, h4 {
         margin-top: 0.8rem;
         margin-bottom: 0.4rem;
@@ -51,7 +50,7 @@ FEEDBACK_PATH = "feedback.csv"     # 계약번호별 피드백 저장용
 @st.cache_data
 def load_data(path: str) -> pd.DataFrame:
     if not os.path.exists(path):
-        st.error(f"❌ 'merged.xlsx' 파일을 찾을 수 없습니다. 저장소 루트에 위치하는지 확인하세요.")
+        st.error("❌ 'merged.xlsx' 파일을 찾을 수 없습니다. 저장소 루트에 위치하는지 확인하세요.")
         return pd.DataFrame()
 
     df = pd.read_excel(path)
@@ -281,6 +280,7 @@ if "접수일시" in df_voc.columns and df_voc["접수일시"].notna().any():
         value=(min_d, max_d),
         min_value=min_d,
         max_value=max_d,
+        key="global_date_range",
     )
 else:
     dr = None
@@ -291,6 +291,7 @@ sel_branches = st.sidebar.multiselect(
     "관리지사(복수 선택)",
     options=branches_all,
     default=branches_all,
+    key="global_branches",
 )
 
 # 리스크 등급 필터
@@ -299,6 +300,7 @@ sel_risk = st.sidebar.multiselect(
     "리스크등급",
     options=risk_all,
     default=risk_all,
+    key="global_risk",
 )
 
 # 매칭여부 필터
@@ -307,6 +309,7 @@ sel_match = st.sidebar.multiselect(
     "매칭여부",
     options=match_all,
     default=match_all,
+    key="global_match",
 )
 
 st.sidebar.markdown("---")
@@ -397,6 +400,7 @@ with tab1:
         "지사 선택",
         options=branches_for_tab1,
         horizontal=True,
+        key="tab1_branch_radio",
     )
 
     temp_for_mgr = voc_filtered_global.copy()
@@ -422,6 +426,7 @@ with tab1:
         "담당자 선택",
         options=mgr_options_tab1,
         horizontal=True,
+        key="tab1_mgr_radio",
     )
 
     # 검색 입력
@@ -499,6 +504,7 @@ with tab2:
             "지사 선택",
             options=branches_u,
             horizontal=True,
+            key="tab2_branch_radio",
         )
 
         temp_u_for_mgr = unmatched_global.copy()
@@ -524,6 +530,7 @@ with tab2:
             "담당자 선택",
             options=mgr_options_u,
             horizontal=True,
+            key="tab2_mgr_radio",
         )
 
         # 추가 검색 (계약번호/상호)
@@ -658,7 +665,12 @@ with tab4:
     # 지사 / 담당자 필터
     d1, d2 = st.columns([2, 3])
     branches_d = ["전체"] + sort_branch(base["관리지사"].dropna().unique())
-    sel_branch_d = d1.radio("지사 선택", options=branches_d, horizontal=True)
+    sel_branch_d = d1.radio(
+        "지사 선택",
+        options=branches_d,
+        horizontal=True,
+        key="tab4_branch_radio",
+    )
 
     tmp_mgr_d = base.copy()
     if sel_branch_d != "전체":
@@ -677,7 +689,12 @@ with tab4:
         else ["전체"]
     )
 
-    sel_mgr_d = d2.radio("담당자 선택", options=mgr_options_d, horizontal=True)
+    sel_mgr_d = d2.radio(
+        "담당자 선택",
+        options=mgr_options_d,
+        horizontal=True,
+        key="tab4_mgr_radio",
+    )
 
     # 계약번호 / 상호 검색
     dd1, dd2 = st.columns(2)
@@ -745,6 +762,7 @@ with tab4:
             "상세를 볼 계약 선택",
             options=cn_list,
             format_func=format_cn,
+            key="tab4_cn_selectbox",
         )
 
         if sel_cn:
