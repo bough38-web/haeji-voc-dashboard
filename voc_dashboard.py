@@ -480,7 +480,6 @@ with tab1:
         summary_cols = [c for c in summary_cols if c in df_summary.columns]
 
         st.markdown(f"**표시 계약 수:** {len(df_summary):,} 건")
-        # 여기서는 요약 테이블은 읽기 전용이므로 data_editor 대신 dataframe 유지
         st.dataframe(
             style_risk(df_summary[summary_cols]),
             use_container_width=True,
@@ -488,8 +487,7 @@ with tab1:
         )
 
 # ====================================================
-# TAB 2 — 비매칭(X) 활동대상 (계약번호 기준)
-#   👉 요약 테이블 행 클릭 → 하단 상세 자동 표시
+# TAB 2 — 비매칭(X) 활동대상 (계약번호 기준) + 행 클릭 상세
 # ====================================================
 with tab2:
     st.subheader("🚨 비매칭(X) 활동대상 (계약번호 기준)")
@@ -582,38 +580,36 @@ with tab2:
                 f"⚠ 활동대상 비매칭(X) 계약 수: **{len(df_u_summary):,} 건**"
             )
 
-            # 🔹 행 클릭 선택 가능한 요약 테이블 (data_editor 사용)
-            u_summary_display = df_u_summary[summary_cols_u].reset_index(drop=True)
+            # 선택 가능한 요약 테이블 (행 클릭 시 아래 상세 표시)
+            st.caption("상단 표에서 행을 클릭하면 해당 계약번호의 VOC 이력이 아래에 표시됩니다.")
+            unmatched_summary_display = df_u_summary[summary_cols_u].reset_index(drop=True)
 
-            edited_unmatched = st.data_editor(
-                u_summary_display,
+            _ = st.data_editor(
+                unmatched_summary_display,
                 hide_index=True,
                 use_container_width=True,
-                disabled=True,
+                disabled=False,               # 반드시 False 여야 선택 가능
                 key="tab2_unmatched_editor",
                 height=320,
             )
 
-            # 선택된 행 index 확인
-            selected_rows_u = st.session_state.get("tab2_unmatched_editor", {}).get(
-                "selected_rows", []
-            )
+            editor_state = st.session_state.get("tab2_unmatched_editor", {})
+            selected_rows_u = editor_state.get("selected_rows", [])
 
-            # 하단 상세 영역
             st.markdown("---")
             st.markdown("### 📂 선택한 계약번호 상세 VOC 이력")
 
             if selected_rows_u:
                 sel_idx = selected_rows_u[0]
-                sel_contract = u_summary_display.loc[sel_idx, "계약번호_정제"]
+                sel_u_contract = unmatched_summary_display.loc[sel_idx, "계약번호_정제"]
 
                 voc_detail = temp_u[
-                    temp_u["계약번호_정제"].astype(str) == str(sel_contract)
+                    temp_u["계약번호_정제"].astype(str) == str(sel_u_contract)
                 ].copy()
                 voc_detail = voc_detail.sort_values("접수일시", ascending=False)
 
                 st.markdown(
-                    f"#### 🔍 `{sel_contract}` VOC 상세 이력 ({len(voc_detail)}건)"
+                    f"#### 🔍 `{sel_u_contract}` VOC 상세 이력 ({len(voc_detail)}건)"
                 )
                 st.dataframe(
                     style_risk(voc_detail[display_cols]),
@@ -621,16 +617,15 @@ with tab2:
                     height=350,
                 )
             else:
-                st.info("상단 표에서 계약 한 건을 클릭하면 상세 이력이 아래에 표시됩니다.")
+                st.info("상단 표에서 하나의 행을 클릭하면, 이곳에 상세 이력이 자동으로 표시됩니다.")
 
             # 내려받기 (행 단위 전체)
-            if not temp_u.empty:
-                st.download_button(
-                    "📥 비매칭(X) 원천 VOC 행 기준 다운로드 (CSV)",
-                    temp_u.to_csv(index=False).encode("utf-8-sig"),
-                    file_name="비매칭_활동대상_원천행.csv",
-                    mime="text/csv",
-                )
+            st.download_button(
+                "📥 비매칭(X) 원천 VOC 행 기준 다운로드 (CSV)",
+                temp_u.to_csv(index=False).encode("utf-8-sig"),
+                file_name="비매칭_활동대상_원천행.csv",
+                mime="text/csv",
+            )
 
 # ====================================================
 # TAB 3 — 지사/담당자 시각화
@@ -695,7 +690,7 @@ with tab3:
             st.line_chart(trend, use_container_width=True)
 
 # ====================================================
-# TAB 4 — 계약별 드릴다운 (계약번호 단위로 그룹 + 행 클릭)
+# TAB 4 — 계약별 드릴다운 (계약번호 단위로 그룹)
 # ====================================================
 with tab4:
     st.subheader("🔍 계약번호 기준 통합 드릴다운")
@@ -794,28 +789,32 @@ with tab4:
         sum_cols_d = [c for c in sum_cols_d if c in df_d_summary.columns]
 
         st.markdown("#### 📋 계약 요약 (최신 VOC 기준, 계약번호당 1행)")
-
-        d_summary_display = df_d_summary[sum_cols_d].reset_index(drop=True)
-
-        edited_drill = st.data_editor(
-            d_summary_display,
-            hide_index=True,
+        st.dataframe(
+            style_risk(df_d_summary[sum_cols_d]),
             use_container_width=True,
-            disabled=True,
-            key="tab4_summary_editor",
             height=260,
         )
 
-        selected_rows_d = st.session_state.get("tab4_summary_editor", {}).get(
-            "selected_rows", []
+        # 선택 계약번호
+        cn_list = df_d_summary["계약번호_정제"].astype(str).tolist()
+
+        def format_cn(cn_value: str) -> str:
+            row = df_d_summary[
+                df_d_summary["계약번호_정제"].astype(str) == str(cn_value)
+            ].iloc[0]
+            name = row.get("상호", "")
+            branch = row.get("관리지사", "")
+            cnt = row.get("접수건수", 0)
+            return f"{cn_value} | {name} | {branch} | 접수 {int(cnt)}건"
+
+        sel_cn = st.selectbox(
+            "상세를 볼 계약 선택",
+            options=cn_list,
+            format_func=format_cn,
+            key="tab4_cn_selectbox",
         )
 
-        if not selected_rows_d:
-            st.info("위 표에서 계약 한 건을 클릭하면 아래에 전체 이력이 표시됩니다.")
-        else:
-            sel_idx_d = selected_rows_d[0]
-            sel_cn = d_summary_display.loc[sel_idx_d, "계약번호_정제"]
-
+        if sel_cn:
             # VOC 이력 (해당 계약 모든 이력)
             voc_hist = df_voc[
                 df_voc["계약번호_정제"].astype(str) == str(sel_cn)
