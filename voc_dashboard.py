@@ -487,7 +487,7 @@ with tab1:
         )
 
 # ====================================================
-# TAB 2 — 비매칭(X) 활동대상 (계약번호 기준) + 행 클릭 상세
+# TAB 2 — 비매칭(X) 활동대상 (계약번호 기준) + 행 선택 → 상세 이력
 # ====================================================
 with tab2:
     st.subheader("🚨 비매칭(X) 활동대상 (계약번호 기준)")
@@ -580,31 +580,55 @@ with tab2:
                 f"⚠ 활동대상 비매칭(X) 계약 수: **{len(df_u_summary):,} 건**"
             )
 
-            # 선택 가능한 요약 테이블 (행 클릭 시 아래 상세 표시)
-            st.caption("상단 표에서 행을 클릭하면 해당 계약번호의 VOC 이력이 아래에 표시됩니다.")
-            unmatched_summary_display = df_u_summary[summary_cols_u].reset_index(drop=True)
+            # 🔹 여기서부터: data_editor로 행 선택 + 자동 상세 이력
+            st.markdown("##### 📋 비매칭(X) 계약 목록 (행 선택 가능)")
 
-            _ = st.data_editor(
-                unmatched_summary_display,
-                hide_index=True,
+            edited = st.data_editor(
+                df_u_summary[summary_cols_u].reset_index(drop=True),
                 use_container_width=True,
-                disabled=False,               # 반드시 False 여야 선택 가능
+                height=420,
+                hide_index=True,
                 key="tab2_unmatched_editor",
-                height=320,
             )
 
-            editor_state = st.session_state.get("tab2_unmatched_editor", {})
-            selected_rows_u = editor_state.get("selected_rows", [])
+            # 선택된 행 인덱스 읽기 (Streamlit 버전에 따라 selected_rows 또는 selection.rows 사용)
+            selected_idx = None
+            state = st.session_state.get("tab2_unmatched_editor", {})
 
-            st.markdown("---")
+            selected_rows = []
+            if isinstance(state, dict):
+                # 패턴 1: {"selected_rows": [0, 2, ...]}
+                if "selected_rows" in state and state["selected_rows"]:
+                    selected_rows = state["selected_rows"]
+                # 패턴 2: {"selection": {"rows": [0, 2, ...]}}
+                elif "selection" in state and isinstance(state["selection"], dict):
+                    rows_sel = state["selection"].get("rows")
+                    if rows_sel:
+                        selected_rows = rows_sel
+
+            if selected_rows:
+                selected_idx = selected_rows[0]
+
+            # 계약번호 목록
+            u_contract_list = df_u_summary["계약번호_정제"].astype(str).tolist()
+
+            # 행 선택이 있을 경우 selectbox 기본값으로 동기화
+            default_index = 0  # "(선택)"
+            if selected_idx is not None and 0 <= selected_idx < len(u_contract_list):
+                default_index = selected_idx + 1  # 0번은 "(선택)"이므로 +1
+
             st.markdown("### 📂 선택한 계약번호 상세 VOC 이력")
 
-            if selected_rows_u:
-                sel_idx = selected_rows_u[0]
-                sel_u_contract = unmatched_summary_display.loc[sel_idx, "계약번호_정제"]
+            sel_u_contract = st.selectbox(
+                "상세 VOC 이력을 볼 계약 선택 (표 행을 클릭하면 자동 선택됩니다)",
+                options=["(선택)"] + u_contract_list,
+                index=default_index,
+                key="tab2_select_contract",
+            )
 
+            if sel_u_contract != "(선택)":
                 voc_detail = temp_u[
-                    temp_u["계약번호_정제"].astype(str) == str(sel_u_contract)
+                    temp_u["계약번호_정제"].astype(str) == sel_u_contract
                 ].copy()
                 voc_detail = voc_detail.sort_values("접수일시", ascending=False)
 
@@ -616,8 +640,6 @@ with tab2:
                     use_container_width=True,
                     height=350,
                 )
-            else:
-                st.info("상단 표에서 하나의 행을 클릭하면, 이곳에 상세 이력이 자동으로 표시됩니다.")
 
             # 내려받기 (행 단위 전체)
             st.download_button(
