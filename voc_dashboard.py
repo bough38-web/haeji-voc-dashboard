@@ -50,98 +50,61 @@ FEEDBACK_PATH = "feedback.csv"     # 계약번호별 피드백 저장용
 @st.cache_data
 def load_data(path: str) -> pd.DataFrame:
     if not os.path.exists(path):
-        st.error("❌ 'merged.xlsx' 파일을 찾을 수 없습니다. 저장소 루트에 위치하는지 확인하세요.")
+        st.error("❌ 'merged.xlsx' 파일이 없습니다.")
         return pd.DataFrame()
 
     df = pd.read_excel(path)
 
-    # 숫자형 컬럼 콤마 제거
-    for col in ["계약번호", "고객번호"]:
-        if col in df.columns:
-            df[col] = (
-                df[col]
-                .astype(str)
-                .str.replace(",", "")
-                .str.strip()
-            )
+    # 1) 시설_ 접두사 자동 처리
+    facility_prefix_cols = [c for c in df.columns if c.startswith("시설_")]
+    rename_map = {c: c.replace("시설_", "") for c in facility_prefix_cols}
+    df = df.rename(columns=rename_map)
 
-    # 출처 정제
-    if "출처" in df.columns:
-        df["출처"] = df["출처"].replace({"고객리스트": "해지시설"})
-
-    # 계약번호 정제
+    # 2) 숫자형 계약번호 정제
     if "계약번호" in df.columns:
-        df["계약번호_정제"] = (
-            df["계약번호"]
-            .astype(str)
-            .str.replace(r"[^0-9A-Za-z]", "", regex=True)
-            .str.strip()
-        )
+        df["계약번호"] = df["계약번호"].astype(str).str.replace(",", "").str.strip()
+        df["계약번호_정제"] = df["계약번호"].str.replace(r"[^0-9A-Za-z]", "", regex=True)
     else:
         df["계약번호_정제"] = ""
 
-    # 접수일시 → datetime
+    # 3) 접수일시 → datetime
     if "접수일시" in df.columns:
         df["접수일시"] = pd.to_datetime(df["접수일시"], errors="coerce")
 
-    # KTT월정료(조정) → 숫자 컬럼/구간 생성
+    # 4) 설치주소/월정료 자동 매핑
+    # (이름이 달라도 알아서 찾아냄)
+    addr_candidates = [c for c in df.columns if "설치주소" in c]
+    fee_candidates = [c for c in df.columns if "월정료" in c]
+
+    if "설치주소" not in df.columns and addr_candidates:
+        df["설치주소"] = df[addr_candidates[0]]
+
+    if "KTT월정료(조정)" not in df.columns and fee_candidates:
+        df["KTT월정료(조정)" ]= df[fee_candidates[0]]
+
+    # 5) 월정료 수치화
+    def parse_fee(x):
+        s = str(x).replace(",", "").strip()
+        digits = "".join(ch for ch in s if ch.isdigit())
+        if digits == "":
+            return np.nan
+        return float(digits)
+
     if "KTT월정료(조정)" in df.columns:
-        def parse_fee(x):
-            s = str(x)
-            if s.strip() == "" or s.lower() in ["nan", "none"]:
-                return np.nan
-            s = s.replace(",", "")
-            # 숫자/점만 남기기
-            digits = "".join(ch for ch in s if ch.isdigit() or ch == ".")
-            if digits == "":
-                return np.nan
-            try:
-                return float(digits)
-            except Exception:
-                return np.nan
-
         df["월정료_수치"] = df["KTT월정료(조정)"].apply(parse_fee)
-
-        def fee_band(v):
-            if pd.isna(v):
-                return "미기재"
-            if v >= 100000:
-                return "10만 이상"
-            return "10만 미만"
-
-        df["월정료구간"] = df["월정료_수치"].apply(fee_band)
+        df["월정료구간"] = df["월정료_수치"].apply(
+            lambda v: "10만 이상" if pd.notna(v) and v >= 100000 else (
+                "10만 미만" if pd.notna(v) else "미기재"
+            )
+        )
     else:
         df["월정료_수치"] = np.nan
         df["월정료구간"] = "미기재"
 
+    # 6) None만 존재하는 컬럼 제거
+    df = df.dropna(axis=1, how="all")
+
     return df
-
-
-def load_feedback(path: str) -> pd.DataFrame:
-    """계약번호 단위 피드백 저장용 CSV 로드"""
-    if os.path.exists(path):
-        try:
-            fb = pd.read_csv(path, encoding="utf-8-sig")
-        except Exception:
-            fb = pd.read_csv(path)
-    else:
-        fb = pd.DataFrame(
-            columns=["계약번호_정제", "고객대응내용", "등록자", "등록일자", "비고"]
-        )
-    return fb
-
-
-def save_feedback(path: str, fb_df: pd.DataFrame) -> None:
-    fb_df.to_csv(path, index=False, encoding="utf-8-sig")
-
-
-df = load_data(MERGED_PATH)
-if df.empty:
-    st.stop()
-
-# 세션에 피드백 적재
-if "feedback_df" not in st.session_state:
-    st.session_state["feedback_df"] = load_feedback(FEEDBACK_PATH)
 
 
 # ----------------------------------------------------
