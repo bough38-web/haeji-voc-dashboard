@@ -379,10 +379,16 @@ k4.metric("매칭(O) 계약 수", f"{matched_contracts:,}")
 st.markdown("---")
 
 # ----------------------------------------------------
-# 12. 탭 구성
+# 12. 탭 구성 (5개 탭 한 줄에)
 # ----------------------------------------------------
-tab1, tab2, tab3, tab4 = st.tabs(
-    ["📘 VOC 전체(계약 기준)", "🚨 비매칭(활동대상)", "📊 지사/담당자 현황", "🔍 계약별 드릴다운"]
+tab1, tab2, tab3, tab4, tab5 = st.tabs(
+    [
+        "📘 VOC 전체(계약 기준)",
+        "🚨 비매칭(활동대상)",
+        "📊 지사/담당자 현황",
+        "🔍 계약별 드릴다운",
+        "🎯 비매칭 활동대상 정밀 필터(VOC유형소)",
+    ]
 )
 
 # ====================================================
@@ -580,7 +586,6 @@ with tab2:
                 f"⚠ 활동대상 비매칭(X) 계약 수: **{len(df_u_summary):,} 건**"
             )
 
-            # 🔹 여기서부터: data_editor로 행 선택 + 자동 상세 이력
             st.markdown("##### 📋 비매칭(X) 계약 목록 (행 선택 가능)")
 
             edited = st.data_editor(
@@ -591,16 +596,14 @@ with tab2:
                 key="tab2_unmatched_editor",
             )
 
-            # 선택된 행 인덱스 읽기 (Streamlit 버전에 따라 selected_rows 또는 selection.rows 사용)
+            # 선택된 행 인덱스 읽기
             selected_idx = None
             state = st.session_state.get("tab2_unmatched_editor", {})
 
             selected_rows = []
             if isinstance(state, dict):
-                # 패턴 1: {"selected_rows": [0, 2, ...]}
                 if "selected_rows" in state and state["selected_rows"]:
                     selected_rows = state["selected_rows"]
-                # 패턴 2: {"selection": {"rows": [0, 2, ...]}}
                 elif "selection" in state and isinstance(state["selection"], dict):
                     rows_sel = state["selection"].get("rows")
                     if rows_sel:
@@ -612,10 +615,9 @@ with tab2:
             # 계약번호 목록
             u_contract_list = df_u_summary["계약번호_정제"].astype(str).tolist()
 
-            # 행 선택이 있을 경우 selectbox 기본값으로 동기화
             default_index = 0  # "(선택)"
             if selected_idx is not None and 0 <= selected_idx < len(u_contract_list):
-                default_index = selected_idx + 1  # 0번은 "(선택)"이므로 +1
+                default_index = selected_idx + 1
 
             st.markdown("### 📂 선택한 계약번호 상세 VOC 이력")
 
@@ -988,13 +990,9 @@ with tab4:
                     mime="text/csv",
                 )
 
-
 # ====================================================
 # TAB 5 — 비매칭 활동대상 정밀 필터 (VOC유형소 기반)
 # ====================================================
-tab5_title = "🎯 비매칭 활동대상 정밀 필터(VOC유형소)"
-tab5 = st.tabs([tab5_title])[0]
-
 with tab5:
     st.subheader("🎯 비매칭 활동대상 — VOC유형소 기반 고급 필터")
 
@@ -1003,22 +1001,50 @@ with tab5:
     if df_u.empty:
         st.info("비매칭(X) 데이터가 없습니다.")
     else:
-        # VOC유형소에 존재하는 고유값을 가져옴
-        voc_small_unique = (
-            df_u["VOC유형소"]
-            .dropna()
-            .astype(str)
-            .unique()
-            .tolist()
+        # 🔹 상단 다중조건 버튼 영역 (지사 / 담당자 / VOC유형소)
+        top1, top2 = st.columns([2, 3])
+
+        # 지사 선택
+        branches_5 = ["전체"] + sort_branch(df_u["관리지사"].dropna().unique())
+        selected_branch_5 = top1.radio(
+            "지사 선택",
+            options=branches_5,
+            horizontal=True,
+            key="tab5_branch_radio",
         )
 
-        # 주요 방어 유형 후보 (데이터에 없더라도 표시)
+        # 선택된 지사 기준 담당자 목록
+        tmp_mgr_5 = df_u.copy()
+        if selected_branch_5 != "전체":
+            tmp_mgr_5 = tmp_mgr_5[tmp_mgr_5["관리지사"] == selected_branch_5]
+
+        mgr_options_5 = (
+            ["전체"]
+            + sorted(
+                tmp_mgr_5["구역담당자_통합"]
+                .dropna()
+                .astype(str)
+                .unique()
+                .tolist()
+            )
+            if "구역담당자_통합" in tmp_mgr_5.columns
+            else ["전체"]
+        )
+
+        selected_mgr_5 = top2.radio(
+            "담당자 선택",
+            options=mgr_options_5,
+            horizontal=True,
+            key="tab5_mgr_radio",
+        )
+
+        st.markdown("#### 🔽 VOC유형소 필터 방식 선택")
+
+        # 주요 방어 유형
         defense_types = ["지사방어", "센터방어"]
 
-        st.markdown("#### 🔽 VOC유형소 필터 선택")
-
         filter_type = st.radio(
-            "VOC유형소 필터 방식 선택:",
+            "VOC유형소 필터 방식:",
             options=[
                 "전체 보기",
                 "지사방어만 보기",
@@ -1029,9 +1055,17 @@ with tab5:
             key="tab5_filter_radio",
         )
 
+        # 🔹 필터 순서: 지사 → 담당자 → VOC유형소
         df_filtered = df_u.copy()
 
-        # 필터 적용
+        if selected_branch_5 != "전체":
+            df_filtered = df_filtered[df_filtered["관리지사"] == selected_branch_5]
+
+        if selected_mgr_5 != "전체":
+            df_filtered = df_filtered[
+                df_filtered["구역담당자_통합"].astype(str) == selected_mgr_5
+            ]
+
         if filter_type == "지사방어만 보기":
             df_filtered = df_filtered[df_filtered["VOC유형소"] == "지사방어"]
 
@@ -1043,7 +1077,6 @@ with tab5:
                 ~df_filtered["VOC유형소"].isin(defense_types)
             ]
 
-        # 표시
         st.markdown(
             f"📌 **필터 적용 후 계약 수 : {df_filtered['계약번호_정제'].nunique():,} 건**"
         )
@@ -1051,14 +1084,16 @@ with tab5:
         if df_filtered.empty:
             st.warning("조건에 해당하는 데이터가 없습니다.")
         else:
-            # 최신 VOC 기준으로 계약 요약
+            # 계약번호 기준 요약 (최신 VOC + 접수건수)
             df_sorted = df_filtered.sort_values("접수일시", ascending=False)
-            grp = df_sorted.groupby("계약번호_정제")
-            idx_latest = grp["접수일시"].idxmax()
-            df_summary = df_sorted.loc[idx_latest].copy()
-            df_summary["접수건수"] = grp.size().reindex(df_summary["계약번호_정제"]).values
+            grp5 = df_sorted.groupby("계약번호_정제")
+            idx_latest_5 = grp5["접수일시"].idxmax()
+            df_summary_5 = df_sorted.loc[idx_latest_5].copy()
+            df_summary_5["접수건수"] = grp5.size().reindex(
+                df_summary_5["계약번호_정제"]
+            ).values
 
-            sum_cols = [
+            sum_cols_5 = [
                 "계약번호_정제",
                 "상호",
                 "관리지사",
@@ -1068,22 +1103,21 @@ with tab5:
                 "경과일수",
                 "접수건수",
             ]
-            sum_cols = [c for c in sum_cols if c in df_summary.columns]
+            sum_cols_5 = [c for c in sum_cols_5 if c in df_summary_5.columns]
 
             st.dataframe(
-                style_risk(df_summary[sum_cols]),
+                style_risk(df_summary_5[sum_cols_5]),
                 use_container_width=True,
                 height=450,
             )
 
-            # 선택 계약번호 상세
             st.markdown("---")
             st.markdown("### 📂 선택 계약 상세 VOC 이력")
 
-            cn_list = df_summary["계약번호_정제"].astype(str).tolist()
+            cn_list_5 = df_summary_5["계약번호_정제"].astype(str).tolist()
             sel_cn5 = st.selectbox(
                 "계약 선택",
-                options=["(선택)"] + cn_list,
+                options=["(선택)"] + cn_list_5,
                 key="tab5_cn_select",
             )
 
