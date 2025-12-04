@@ -576,13 +576,39 @@ with tab2:
             summary_cols_u = [c for c in summary_cols_u if c in df_u_summary.columns]
 
             st.markdown(
-                f"⚠ 활동대상 비매칭(X) 계약 수: **{len(df_u_summary):,} 건**"
+                f"⚠ 활동대상 비매칭(X) 계약 수: **{len[df_u_summary]:,} 건**"
             )
             st.dataframe(
                 style_risk(df_u_summary[summary_cols_u]),
                 use_container_width=True,
                 height=420,
             )
+
+            # 🔽 계약번호 상세 이력 보기
+            st.markdown("---")
+            st.markdown("### 📂 선택한 계약번호 상세 VOC 이력")
+
+            u_contract_list = df_u_summary["계약번호_정제"].astype(str).tolist()
+            sel_u_contract = st.selectbox(
+                "상세 VOC 이력을 볼 계약 선택",
+                options=["(선택)"] + u_contract_list,
+                key="tab2_select_contract",
+            )
+
+            if sel_u_contract != "(선택)":
+                voc_detail = temp_u[
+                    temp_u["계약번호_정제"].astype(str) == sel_u_contract
+                ].copy()
+                voc_detail = voc_detail.sort_values("접수일시", ascending=False)
+
+                st.markdown(
+                    f"#### 🔍 `{sel_u_contract}` VOC 상세 이력 ({len(voc_detail)}건)"
+                )
+                st.dataframe(
+                    style_risk(voc_detail[display_cols]),
+                    use_container_width=True,
+                    height=350,
+                )
 
             # 내려받기 (행 단위 전체)
             st.download_button(
@@ -660,11 +686,25 @@ with tab3:
 with tab4:
     st.subheader("🔍 계약번호 기준 통합 드릴다운")
 
-    base = voc_filtered_global.copy()
+    base_all = voc_filtered_global.copy()
+
+    # 매칭여부 필터 추가
+    match_choice = st.radio(
+        "매칭여부 선택",
+        options=["전체", "매칭(O)", "비매칭(X)"],
+        horizontal=True,
+        key="tab4_match_radio",
+    )
+
+    drill_base = base_all.copy()
+    if match_choice == "매칭(O)":
+        drill_base = drill_base[drill_base["매칭여부"] == "매칭(O)"]
+    elif match_choice == "비매칭(X)":
+        drill_base = drill_base[drill_base["매칭여부"] == "비매칭(X)"]
 
     # 지사 / 담당자 필터
     d1, d2 = st.columns([2, 3])
-    branches_d = ["전체"] + sort_branch(base["관리지사"].dropna().unique())
+    branches_d = ["전체"] + sort_branch(drill_base["관리지사"].dropna().unique())
     sel_branch_d = d1.radio(
         "지사 선택",
         options=branches_d,
@@ -672,7 +712,7 @@ with tab4:
         key="tab4_branch_radio",
     )
 
-    tmp_mgr_d = base.copy()
+    tmp_mgr_d = drill_base.copy()
     if sel_branch_d != "전체":
         tmp_mgr_d = tmp_mgr_d[tmp_mgr_d["관리지사"] == sel_branch_d]
 
@@ -701,7 +741,7 @@ with tab4:
     dq_cn = dd1.text_input("계약번호 검색(부분)", key="tab4_cn")
     dq_name = dd2.text_input("상호 검색(부분)", key="tab4_name")
 
-    drill = base.copy()
+    drill = drill_base.copy()
     if sel_branch_d != "전체":
         drill = drill[drill["관리지사"] == sel_branch_d]
     if sel_mgr_d != "전체":
@@ -875,7 +915,7 @@ with tab4:
                     # CSV 저장
                     save_feedback(FEEDBACK_PATH, st.session_state["feedback_df"])
                     st.success("처리내역이 저장되었습니다.")
-                    st.experimental_rerun()
+                    st.rerun()
 
             st.markdown("---")
 
