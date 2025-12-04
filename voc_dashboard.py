@@ -177,6 +177,7 @@ other_sets = {
 }
 other_union = set().union(*other_sets.values()) if other_sets else set()
 
+# VOC에 있고 기타 출처에도 있으면 → 매칭(O), 아니면 비매칭(X)
 df_voc["매칭여부"] = df_voc["계약번호_정제"].apply(
     lambda x: "매칭(O)" if x in other_union else "비매칭(X)"
 )
@@ -576,7 +577,7 @@ with tab2:
             summary_cols_u = [c for c in summary_cols_u if c in df_u_summary.columns]
 
             st.markdown(
-                f"⚠ 활동대상 비매칭(X) 계약 수: **{len[df_u_summary]:,} 건**"
+                f"⚠ 활동대상 비매칭(X) 계약 수: **{len(df_u_summary):,} 건**"
             )
             st.dataframe(
                 style_risk(df_u_summary[summary_cols_u]),
