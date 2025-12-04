@@ -90,7 +90,7 @@ def load_voc_data(path: str) -> pd.DataFrame:
     # 설치주소
     if "설치주소" not in df.columns:
         addr_src = next(
-            (c for c in df.columns if "유지_" in c and "설치주소" in c),
+            (c for c in df.columns if "시설_" in c and "설치주소" in c),
             None,
         )
         if addr_src is not None:
@@ -99,7 +99,7 @@ def load_voc_data(path: str) -> pd.DataFrame:
     # KTT월정료(조정)
     if "KTT월정료(조정)" not in df.columns:
         fee_src = next(
-            (c for c in df.columns if "유지_" in c and "KTT월정료" in c),
+            (c for c in df.columns if "시설_" in c and "KTT월정료" in c),
             None,
         )
         if fee_src is not None:
@@ -108,7 +108,7 @@ def load_voc_data(path: str) -> pd.DataFrame:
     # 계약상태(중)
     if "계약상태(중)" not in df.columns:
         status_src = next(
-            (c for c in df.columns if "유지_" in c and "계약상태(중)" in c),
+            (c for c in df.columns if "시설_" in c and "계약상태(중)" in c),
             None,
         )
         if status_src is not None:
@@ -117,7 +117,7 @@ def load_voc_data(path: str) -> pd.DataFrame:
     # 서비스(소)
     if "서비스(소)" not in df.columns:
         svc_src = next(
-            (c for c in df.columns if "유지_" in c and "서비스(소)" in c),
+            (c for c in df.columns if "시설_" in c and "서비스(소)" in c),
             None,
         )
         if svc_src is not None:
@@ -321,11 +321,11 @@ fixed_order = [
     "해지상세",
     "등록내용",
     # 유지조건 쪽에서 가져온 표준 컬럼
-    "시설_설치주소",
-    "시설_KTT월정료(조정)",
+    "설치주소",
+    "KTT월정료(조정)",
     "월정료구간",
-    "시설_계약상태(중)",
-    "시설_서비스(소)",
+    "계약상태(중)",
+    "서비스(소)",
 ]
 display_cols = [c for c in fixed_order if c in df_voc.columns]
 
@@ -563,10 +563,10 @@ with tab1:
             "경과일수",
             "매칭여부",
             "접수건수",
-            "유지_설치주소",
-            "유지_KTT월정료(조정)",
-            "유지_계약상태(중)",
-            "유지_서비스(소)",
+            "설치주소",
+            "KTT월정료(조정)",
+            "계약상태(중)",
+            "서비스(소)",
         ]
         summary_cols = [c for c in summary_cols if c in df_summary.columns]
 
@@ -660,10 +660,10 @@ with tab2:
                 "리스크등급",
                 "경과일수",
                 "접수건수",
-                "유지_설치주소",
-                "유지_KTT월정료(조정)",
-                "유지_계약상태(중)",
-                "유지_서비스(소)",
+                "설치주소",
+                "KTT월정료(조정)",
+                "계약상태(중)",
+                "서비스(소)",
             ]
             summary_cols_u = [
                 c for c in summary_cols_u if c in df_u_summary.columns
@@ -881,10 +881,10 @@ with tab4:
             "경과일수",
             "매칭여부",
             "접수건수",
-            "유지_설치주소",
-            "유지_KTT월정료(조정)",
-            "유지_계약상태(중)",
-            "유지_서비스(소)",
+            "설치주소",
+            "KTT월정료(조정)",
+            "계약상태(중)",
+            "서비스(소)",
         ]
         sum_cols_d = [c for c in sum_cols_d if c in df_d_summary.columns]
 
@@ -1191,11 +1191,11 @@ with tab5:
                 "리스크등급",
                 "경과일수",
                 "접수건수",
-                "유지_설치주소",
-                "유지_KTT월정료(조정)",
-                "유지_월정료구간",
-                "유지_계약상태(중)",
-                "유지_서비스(소)",
+                "설치주소",
+                "KTT월정료(조정)",
+                "월정료구간",
+                "계약상태(중)",
+                "서비스(소)",
             ]
             sum_cols = [c for c in sum_cols if c in df_summary.columns]
 
