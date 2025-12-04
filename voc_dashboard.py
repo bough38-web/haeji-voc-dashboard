@@ -987,3 +987,113 @@ with tab4:
                     file_name=f"통합이력_{sel_cn}.csv",
                     mime="text/csv",
                 )
+
+
+# ====================================================
+# TAB 5 — 비매칭 활동대상 정밀 필터 (VOC유형소 기반)
+# ====================================================
+tab5_title = "🎯 비매칭 활동대상 정밀 필터(VOC유형소)"
+tab5 = st.tabs([tab5_title])[0]
+
+with tab5:
+    st.subheader("🎯 비매칭 활동대상 — VOC유형소 기반 고급 필터")
+
+    df_u = unmatched_global.copy()
+
+    if df_u.empty:
+        st.info("비매칭(X) 데이터가 없습니다.")
+    else:
+        # VOC유형소에 존재하는 고유값을 가져옴
+        voc_small_unique = (
+            df_u["VOC유형소"]
+            .dropna()
+            .astype(str)
+            .unique()
+            .tolist()
+        )
+
+        # 주요 방어 유형 후보 (데이터에 없더라도 표시)
+        defense_types = ["지사방어", "센터방어"]
+
+        st.markdown("#### 🔽 VOC유형소 필터 선택")
+
+        filter_type = st.radio(
+            "VOC유형소 필터 방식 선택:",
+            options=[
+                "전체 보기",
+                "지사방어만 보기",
+                "센터방어만 보기",
+                "지사·센터방어 제외한 실제 활동대상 보기",
+            ],
+            horizontal=False,
+            key="tab5_filter_radio",
+        )
+
+        df_filtered = df_u.copy()
+
+        # 필터 적용
+        if filter_type == "지사방어만 보기":
+            df_filtered = df_filtered[df_filtered["VOC유형소"] == "지사방어"]
+
+        elif filter_type == "센터방어만 보기":
+            df_filtered = df_filtered[df_filtered["VOC유형소"] == "센터방어"]
+
+        elif filter_type == "지사·센터방어 제외한 실제 활동대상 보기":
+            df_filtered = df_filtered[
+                ~df_filtered["VOC유형소"].isin(defense_types)
+            ]
+
+        # 표시
+        st.markdown(
+            f"📌 **필터 적용 후 계약 수 : {df_filtered['계약번호_정제'].nunique():,} 건**"
+        )
+
+        if df_filtered.empty:
+            st.warning("조건에 해당하는 데이터가 없습니다.")
+        else:
+            # 최신 VOC 기준으로 계약 요약
+            df_sorted = df_filtered.sort_values("접수일시", ascending=False)
+            grp = df_sorted.groupby("계약번호_정제")
+            idx_latest = grp["접수일시"].idxmax()
+            df_summary = df_sorted.loc[idx_latest].copy()
+            df_summary["접수건수"] = grp.size().reindex(df_summary["계약번호_정제"]).values
+
+            sum_cols = [
+                "계약번호_정제",
+                "상호",
+                "관리지사",
+                "구역담당자_통합",
+                "VOC유형소",
+                "리스크등급",
+                "경과일수",
+                "접수건수",
+            ]
+            sum_cols = [c for c in sum_cols if c in df_summary.columns]
+
+            st.dataframe(
+                style_risk(df_summary[sum_cols]),
+                use_container_width=True,
+                height=450,
+            )
+
+            # 선택 계약번호 상세
+            st.markdown("---")
+            st.markdown("### 📂 선택 계약 상세 VOC 이력")
+
+            cn_list = df_summary["계약번호_정제"].astype(str).tolist()
+            sel_cn5 = st.selectbox(
+                "계약 선택",
+                options=["(선택)"] + cn_list,
+                key="tab5_cn_select",
+            )
+
+            if sel_cn5 != "(선택)":
+                detail = df_filtered[
+                    df_filtered["계약번호_정제"].astype(str) == sel_cn5
+                ].sort_values("접수일시", ascending=False)
+
+                st.dataframe(
+                    style_risk(detail[display_cols]),
+                    use_container_width=True,
+                    height=400,
+                )
