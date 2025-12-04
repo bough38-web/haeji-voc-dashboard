@@ -56,8 +56,11 @@ def load_voc_data(path: str) -> pd.DataFrame:
 
     df = pd.read_excel(path)
 
-    # 숫자형 컬럼 콤마 제거
-    for col in ["계약번호", "고객번호"]:
+    # -----------------------------
+    # 1) 숫자형 컬럼 정제 (존재할 때만)
+    # -----------------------------
+    numeric_cols = ["계약번호", "고객번호", "시설_계약번호"]
+    for col in numeric_cols:
         if col in df.columns:
             df[col] = (
                 df[col]
@@ -66,21 +69,37 @@ def load_voc_data(path: str) -> pd.DataFrame:
                 .str.strip()
             )
 
-    # 출처 정제
+    # -----------------------------
+    # 2) 출처 정제
+    # -----------------------------
     if "출처" in df.columns:
         df["출처"] = df["출처"].replace({"고객리스트": "해지시설"})
+    else:
+        df["출처"] = ""
 
-    # 계약번호 정제
+    # -----------------------------
+    # 3) 계약번호_정제 생성 (VOC/시설 어느 쪽이든 인식)
+    # -----------------------------
+    if "계약번호" in df.columns:
+        raw_cn = df["계약번호"].astype(str)
+    elif "시설_계약번호" in df.columns:
+        raw_cn = df["시설_계약번호"].astype(str)
+    else:
+        raw_cn = pd.Series([""] * len(df))
+
     df["계약번호_정제"] = (
-        df["계약번호"]
-        .astype(str)
+        raw_cn
         .str.replace(r"[^0-9A-Za-z]", "", regex=True)
         .str.strip()
     )
 
-    # 접수일시 → datetime
+    # -----------------------------
+    # 4) 접수일시 → datetime
+    # -----------------------------
     if "접수일시" in df.columns:
         df["접수일시"] = pd.to_datetime(df["접수일시"], errors="coerce")
+    else:
+        df["접수일시"] = pd.NaT
 
     return df
 
