@@ -49,62 +49,65 @@ FEEDBACK_PATH = "feedback.csv"     # 계약번호별 피드백 저장용
 # ----------------------------------------------------
 @st.cache_data
 def load_data(path: str) -> pd.DataFrame:
-    if not os.path.exists(path):
-        st.error("❌ 'merged.xlsx' 파일이 없습니다.")
-        return pd.DataFrame()
+    try:
+        if not os.path.exists(path):
+            st.error("❌ 'merged.xlsx' 파일을 찾을 수 없습니다.")
+            return pd.DataFrame()
 
-    df = pd.read_excel(path)
+        df = pd.read_excel(path)
 
-    # 1) 시설_ 접두사 자동 처리
-    facility_prefix_cols = [c for c in df.columns if c.startswith("시설_")]
-    rename_map = {c: c.replace("시설_", "") for c in facility_prefix_cols}
-    df = df.rename(columns=rename_map)
+        # 1) 시설_ 접두사 처리
+        facility_cols = [c for c in df.columns if c.startswith("시설_")]
+        rename_map = {c: c.replace("시설_", "") for c in facility_cols}
+        df = df.rename(columns=rename_map)
 
-    # 2) 숫자형 계약번호 정제
-    if "계약번호" in df.columns:
-        df["계약번호"] = df["계약번호"].astype(str).str.replace(",", "").str.strip()
-        df["계약번호_정제"] = df["계약번호"].str.replace(r"[^0-9A-Za-z]", "", regex=True)
-    else:
-        df["계약번호_정제"] = ""
+        # 2) 계약번호 정제
+        if "계약번호" in df.columns:
+            df["계약번호"] = df["계약번호"].astype(str).str.replace(",", "").str.strip()
+            df["계약번호_정제"] = df["계약번호"].str.replace(r"[^0-9A-Za-z]", "", regex=True)
+        else:
+            df["계약번호_정제"] = ""
 
-    # 3) 접수일시 → datetime
-    if "접수일시" in df.columns:
-        df["접수일시"] = pd.to_datetime(df["접수일시"], errors="coerce")
+        # 3) 접수일시 변환
+        if "접수일시" in df.columns:
+            df["접수일시"] = pd.to_datetime(df["접수일시"], errors="coerce")
 
-    # 4) 설치주소/월정료 자동 매핑
-    # (이름이 달라도 알아서 찾아냄)
-    addr_candidates = [c for c in df.columns if "설치주소" in c]
-    fee_candidates = [c for c in df.columns if "월정료" in c]
+        # 4) 설치주소 자동 매핑
+        addr_cols = [c for c in df.columns if "설치주소" in c]
+        if "설치주소" not in df.columns and len(addr_cols) > 0:
+            df["설치주소"] = df[addr_cols[0]]
 
-    if "설치주소" not in df.columns and addr_candidates:
-        df["설치주소"] = df[addr_candidates[0]]
+        # 5) 월정료 자동 매핑
+        fee_cols = [c for c in df.columns if "월정료" in c]
+        if "KTT월정료(조정)" not in df.columns and len(fee_cols) > 0:
+            df["KTT월정료(조정)"] = df[fee_cols[0]]
 
-    if "KTT월정료(조정)" not in df.columns and fee_candidates:
-        df["KTT월정료(조정)" ]= df[fee_candidates[0]]
-
-    # 5) 월정료 수치화
-    def parse_fee(x):
-        s = str(x).replace(",", "").strip()
-        digits = "".join(ch for ch in s if ch.isdigit())
-        if digits == "":
-            return np.nan
-        return float(digits)
-
-    if "KTT월정료(조정)" in df.columns:
-        df["월정료_수치"] = df["KTT월정료(조정)"].apply(parse_fee)
-        df["월정료구간"] = df["월정료_수치"].apply(
-            lambda v: "10만 이상" if pd.notna(v) and v >= 100000 else (
-                "10만 미만" if pd.notna(v) else "미기재"
+        # 6) 월정료 수치화
+        if "KTT월정료(조정)" in df.columns:
+            def parse_fee(x):
+                try:
+                    s = str(x).replace(",", "").strip()
+                    digits = "".join(ch for ch in s if ch.isdigit())
+                    if digits == "":
+                        return np.nan
+                    return float(digits)
+                except:
+                    return np.nan
+            df["월정료_수치"] = df["KTT월정료(조정)"].apply(parse_fee)
+            df["월정료구간"] = df["월정료_수치"].apply(
+                lambda v: "10만 이상" if pd.notna(v) and v >= 100000 else (
+                    "10만 미만" if pd.notna(v) else "미기재"
+                )
             )
-        )
-    else:
-        df["월정료_수치"] = np.nan
-        df["월정료구간"] = "미기재"
 
-    # 6) None만 존재하는 컬럼 제거
-    df = df.dropna(axis=1, how="all")
+        # 7) 전체 None 컬럼 제거
+        df = df.dropna(axis=1, how="all")
 
-    return df
+        return df
+
+    except Exception as e:
+        st.error(f"🚨 데이터 로딩 중 오류 발생: {e}")
+        return pd.DataFrame()
 
 
 # ----------------------------------------------------
