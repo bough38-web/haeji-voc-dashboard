@@ -6,31 +6,59 @@ import pandas as pd
 import streamlit as st
 
 # ----------------------------------------------------
-# 0. 기본 설정 & 라이트톤 스타일
+# 0. 기본 설정
 # ----------------------------------------------------
 st.set_page_config(page_title="해지 VOC 종합 대시보드", layout="wide")
 
+# ----------------------------------------------------
+# 0-1. 테마(라이트/다크) 선택
+# ----------------------------------------------------
+if "theme" not in st.session_state:
+    st.session_state["theme"] = "light"
+
+theme_choice = st.sidebar.radio(
+    "테마 선택",
+    options=["라이트 모드", "다크 모드"],
+    index=0 if st.session_state["theme"] == "light" else 1,
+    key="theme_radio",
+)
+
+st.session_state["theme"] = "light" if theme_choice == "라이트 모드" else "dark"
+
+if st.session_state["theme"] == "light":
+    app_bg = "#f8fafc"
+    text_color = "#111827"
+    sidebar_bg = "#e5e7eb"
+else:
+    app_bg = "#020617"
+    text_color = "#e5e7eb"
+    sidebar_bg = "#111827"
+
+# 테마용 CSS
 st.markdown(
-    """
+    f"""
     <style>
-    .stApp {
-        background-color: #f8fafc;
-        color: #111827;
+    .stApp {{
+        background-color: {app_bg};
+        color: {text_color};
         font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-    }
-    [data-testid="stHeader"] {
-        background-color: #f8fafc;
-    }
-    .dataframe tbody tr:nth-child(odd) {
-        background-color: #f9fafb;
-    }
-    .dataframe tbody tr:nth-child(even) {
-        background-color: #eef2ff;
-    }
-    h2, h3, h4 {
+    }}
+    [data-testid="stHeader"] {{
+        background-color: {app_bg};
+    }}
+    [data-testid="stSidebar"] > div:first-child {{
+        background-color: {sidebar_bg};
+    }}
+    .dataframe tbody tr:nth-child(odd) {{
+        background-color: #0f172a0d;
+    }}
+    .dataframe tbody tr:nth-child(even) {{
+        background-color: #1d4ed81a;
+    }}
+    h2, h3, h4 {{
         margin-top: 0.8rem;
         margin-bottom: 0.4rem;
-    }
+    }}
     </style>
     """,
     unsafe_allow_html=True,
@@ -41,10 +69,11 @@ st.markdown(
 # ----------------------------------------------------
 MERGED_PATH = "merged.xlsx"        # GitHub 루트
 FEEDBACK_PATH = "feedback.csv"     # 계약번호별 피드백 저장
+# RETENTION_PATH = "2025년 8월 유지조건_출력.csv"  # 현재는 merged.xlsx에 이미 포함되어 있어 사용 안 함
 
 
 # ----------------------------------------------------
-# 2. 데이터 로딩 (merged.xlsx + 유지_컬럼 매핑)
+# 2. 데이터 로딩
 # ----------------------------------------------------
 @st.cache_data
 def load_voc_data(path: str) -> pd.DataFrame:
@@ -83,76 +112,39 @@ def load_voc_data(path: str) -> pd.DataFrame:
     if "접수일시" in df.columns:
         df["접수일시"] = pd.to_datetime(df["접수일시"], errors="coerce")
 
-    # ------------------------------------------------
-    # ✅ 유지_ 컬럼을 표준 이름으로 매핑
-    #    (유지_설치주소 → 설치주소 등)
-    # ------------------------------------------------
-    # 설치주소
-    if "설치주소" not in df.columns:
-        addr_src = next(
-            (c for c in df.columns if "시설_" in c and "설치주소" in c),
-            None,
-        )
-        if addr_src is not None:
-            df["설치주소"] = df[addr_src]
+    # ---------- 시설_/유지_ 컬럼 → 공통 컬럼으로 매핑 ----------
+    alias_map = {
+        "설치주소": ["설치주소", "시설_설치주소", "유지_설치주소"],
+        "KTT월정료(조정)": ["KTT월정료(조정)", "시설_KTT월정료(조정)", "유지_KTT월정료(조정)"],
+        "계약상태(중)": ["계약상태(중)", "시설_계약상태(중)", "유지_계약상태(중)"],
+        "서비스(소)": ["서비스(소)", "시설_서비스(소)", "유지_서비스(소)"],
+    }
 
-    # KTT월정료(조정)
-    if "KTT월정료(조정)" not in df.columns:
-        fee_src = next(
-            (c for c in df.columns if "시설_" in c and "KTT월정료" in c),
-            None,
-        )
-        if fee_src is not None:
-            df["KTT월정료(조정)"] = df[fee_src]
+    for new_col, candidates in alias_map.items():
+        # 이미 값이 있는 경우는 그대로 두고, 전부 비어있거나 아예 없을 때만 채움
+        need_fill = new_col not in df.columns or df[new_col].notna().sum() == 0
+        if not need_fill:
+            continue
 
-    # 계약상태(중)
-    if "계약상태(중)" not in df.columns:
-        status_src = next(
-            (c for c in df.columns if "시설_" in c and "계약상태(중)" in c),
-            None,
-        )
-        if status_src is not None:
-            df["계약상태(중)"] = df[status_src]
+        for c in candidates:
+            if c in df.columns and df[c].notna().sum() > 0:
+                df[new_col] = df[c]
+                break
 
-    # 서비스(소)
-    if "서비스(소)" not in df.columns:
-        svc_src = next(
-            (c for c in df.columns if "시설_" in c and "서비스(소)" in c),
-            None,
-        )
-        if svc_src is not None:
-            df["서비스(소)"] = df[svc_src]
-
-    # ------------------------------------------------
-    # ✅ KTT월정료(조정) → 숫자 & 구간 컬럼 생성
-    # ------------------------------------------------
+    # KTT월정료(조정) 숫자 컬럼 생성 (슬라이더/필터용)
     if "KTT월정료(조정)" in df.columns:
-        def parse_fee(x):
-            s = str(x)
-            if s.strip() == "" or s.lower() in ["nan", "none"]:
-                return np.nan
-            s = s.replace(",", "")
-            digits = "".join(ch for ch in s if ch.isdigit() or ch == ".")
-            if digits == "":
-                return np.nan
-            try:
-                return float(digits)
-            except Exception:
-                return np.nan
-
-        df["월정료_수치"] = df["KTT월정료(조정)"].apply(parse_fee)
-
-        def fee_band(v):
-            if pd.isna(v):
-                return "미기재"
-            if v >= 100000:
-                return "10만 이상"
-            return "10만 미만"
-
-        df["월정료구간"] = df["월정료_수치"].apply(fee_band)
+        fee_series = (
+            df["KTT월정료(조정)"]
+            .astype(str)
+            .str.replace(",", "", regex=False)
+            .str.strip()
+        )
+        fee_series = fee_series.replace(
+            {"": np.nan, "None": np.nan, "nan": np.nan}
+        )
+        df["KTT월정료_수치"] = pd.to_numeric(fee_series, errors="coerce")
     else:
-        df["월정료_수치"] = np.nan
-        df["월정료구간"] = "미기재"
+        df["KTT월정료_수치"] = np.nan
 
     return df
 
@@ -220,6 +212,8 @@ def make_zone(row):
         return row["영업구역번호"]
     if "담당상세" in row and pd.notna(row["담당상세"]):
         return row["담당상세"]
+    if "영업구역정보" in row and pd.notna(row["영업구역정보"]):
+        return row["영업구역정보"]
     return ""
 
 
@@ -237,7 +231,7 @@ def pick_manager(row):
 
 df["구역담당자_통합"] = df.apply(pick_manager, axis=1)
 
-# 주소 컬럼 자동 탐색 (유지_설치주소 포함)
+# 주소 컬럼 자동 탐색 (검색용)
 address_cols = [c for c in df.columns if "주소" in c]
 
 
@@ -282,18 +276,14 @@ def compute_risk(row):
     return days, level
 
 
-if "접수일시" in df_voc.columns:
-    df_voc["경과일수"], df_voc["리스크등급"] = zip(
-        *df_voc.apply(lambda r: compute_risk(r), axis=1)
-    )
-else:
-    df_voc["경과일수"] = np.nan
-    df_voc["리스크등급"] = "LOW"
+df_voc["경과일수"], df_voc["리스크등급"] = zip(
+    *df_voc.apply(lambda r: compute_risk(r), axis=1)
+)
 
 df_unmatched = df_voc[df_voc["매칭여부"] == "비매칭(X)"].copy()
 
 # ----------------------------------------------------
-# 7. 공통 표시 컬럼 (유지_에서 온 값 포함)
+# 7. 공통 표시 컬럼 (설치주소/월정료/계약상태/서비스 포함)
 # ----------------------------------------------------
 fixed_order = [
     "상호",
@@ -320,10 +310,9 @@ fixed_order = [
     "VOC유형소",
     "해지상세",
     "등록내용",
-    # 유지조건 쪽에서 가져온 표준 컬럼
+    # 유지/시설에서 온 주요 정보
     "설치주소",
     "KTT월정료(조정)",
-    "월정료구간",
     "계약상태(중)",
     "서비스(소)",
 ]
@@ -465,7 +454,7 @@ k4.metric("매칭(O) 계약 수", f"{matched_contracts:,}")
 st.markdown("---")
 
 # ----------------------------------------------------
-# 12. 탭 구성 (기존 구조 그대로)
+# 12. 탭 구성 (5개)
 # ----------------------------------------------------
 tab1, tab2, tab3, tab4, tab5 = st.tabs(
     [
@@ -477,10 +466,13 @@ tab1, tab2, tab3, tab4, tab5 = st.tabs(
     ]
 )
 
-# ================= TAB1 ============================
+# ====================================================
+# TAB 1 — VOC 전체 (계약번호 기준 요약)
+# ====================================================
 with tab1:
     st.subheader("📘 VOC 전체 (계약번호 기준 요약)")
 
+    # 지사 / 담당자 버튼식 필터
     row1_col1, row1_col2 = st.columns([2, 3])
 
     branches_for_tab1 = ["전체"] + sort_branch(
@@ -519,6 +511,7 @@ with tab1:
         key="tab1_mgr_radio",
     )
 
+    # 검색 입력
     s1, s2, s3 = st.columns(3)
     q_cn = s1.text_input("계약번호 검색(부분)", key="tab1_cn")
     q_name = s2.text_input("상호 검색(부분)", key="tab1_name")
@@ -545,6 +538,7 @@ with tab1:
             cond |= temp[col].astype(str).str.contains(q_addr.strip())
         temp = temp[cond]
 
+    # 계약번호 기준 요약 (최신 VOC + 접수건수)
     if temp.empty:
         st.info("조건에 맞는 VOC 데이터가 없습니다.")
     else:
@@ -570,14 +564,16 @@ with tab1:
         ]
         summary_cols = [c for c in summary_cols if c in df_summary.columns]
 
-        st.markdown(f"**필터 적용 후 계약 수:** {len(df_summary):,} 건")
+        st.markdown(f"📌 필터 적용 후 계약 수: **{len(df_summary):,} 건**")
         st.dataframe(
             style_risk(df_summary[summary_cols]),
             use_container_width=True,
             height=480,
         )
 
-# ================= TAB2 ============================
+# ====================================================
+# TAB 2 — 비매칭(X) 활동대상
+# ====================================================
 with tab2:
     st.subheader("🚨 비매칭(X) 활동대상 (계약번호 기준)")
 
@@ -681,6 +677,7 @@ with tab2:
                 key="tab2_unmatched_editor",
             )
 
+            # 행 선택 상태 읽기 → selectbox 연동
             selected_idx = None
             state = st.session_state.get("tab2_unmatched_editor", {})
             selected_rows = []
@@ -704,7 +701,6 @@ with tab2:
                 default_index = selected_idx + 1
 
             st.markdown("### 📂 선택한 계약번호 상세 VOC 이력")
-
             sel_u_contract = st.selectbox(
                 "상세 VOC 이력을 볼 계약 선택 (표 행을 클릭하면 자동 선택됩니다)",
                 options=["(선택)"] + u_contract_list,
@@ -734,7 +730,9 @@ with tab2:
                 mime="text/csv",
             )
 
-# ================= TAB3 ============================
+# ====================================================
+# TAB 3 — 지사/담당자 시각화
+# ====================================================
 with tab3:
     st.subheader("📊 지사 / 담당자별 비매칭 리스크 현황")
 
@@ -790,7 +788,9 @@ with tab3:
             st.markdown("#### 📈 일별 비매칭 계약 추이")
             st.line_chart(trend, use_container_width=True)
 
-# ================= TAB4 ============================
+# ====================================================
+# TAB 4 — 계약별 드릴다운
+# ====================================================
 with tab4:
     st.subheader("🔍 계약번호 기준 통합 드릴다운")
 
@@ -945,6 +945,11 @@ with tab4:
                 m2_2.metric("리스크등급", str(base_info.get("리스크등급", "")))
                 m2_3.metric("매칭여부", str(base_info.get("매칭여부", "")))
 
+                st.caption(f"📍 설치주소: {str(base_info.get('설치주소', ''))}")
+                st.caption(
+                    f"💰 KTT월정료(조정): {str(base_info.get('KTT월정료(조정)', ''))}"
+                )
+
             st.markdown("---")
 
             c_left, c_right = st.columns(2)
@@ -973,6 +978,7 @@ with tab4:
 
             st.markdown("---")
 
+            # 피드백 이력 & 입력
             st.markdown("#### 📝 고객대응 / 현장 처리내역")
 
             fb_all = st.session_state["feedback_df"]
@@ -1037,7 +1043,6 @@ with tab4:
                 )
 
             export_frames = []
-
             if not voc_hist.empty:
                 v_exp = voc_hist.copy()
                 v_exp.insert(0, "구분", "VOC")
@@ -1062,9 +1067,11 @@ with tab4:
                     mime="text/csv",
                 )
 
-# ================= TAB5 ============================
+# ====================================================
+# TAB 5 — 비매칭 활동대상 정밀 필터 (VOC유형소 + 설치주소 + 월정료)
+# ====================================================
 with tab5:
-    st.subheader("🎯 비매칭 활동대상 — VOC유형소 / 유지조건 기반 고급 필터")
+    st.subheader("🎯 비매칭 활동대상 — VOC유형소 / 설치주소 / 월정료 기반 고급 필터")
 
     df_u = unmatched_global.copy()
 
@@ -1122,15 +1129,18 @@ with tab5:
         addr_kw = a1.text_input("설치주소 검색(부분)", key="tab5_addr_kw")
 
         ktt_min, ktt_max = None, None
-        if "월정료_수치" in df_u.columns and df_u["월정료_수치"].notna().any():
-            ktt_series = df_u["월정료_수치"].dropna()
-            ktt_min_val = int(ktt_series.min())
-            ktt_max_val = int(ktt_series.max())
+        if (
+            "KTT월정료_수치" in df_u.columns
+            and df_u["KTT월정료_수치"].notna().any()
+        ):
+            valid_fee = df_u["KTT월정료_수치"].dropna()
+            min_val = int(valid_fee.min())
+            max_val = int(valid_fee.max())
             ktt_min, ktt_max = a2.slider(
                 "KTT월정료(조정) 범위",
-                min_value=ktt_min_val,
-                max_value=ktt_max_val,
-                value=(ktt_min_val, ktt_max_val),
+                min_value=min_val,
+                max_value=max_val,
+                value=(min_val, max_val),
                 step=1000,
                 key="tab5_ktt_slider",
             )
@@ -1161,10 +1171,10 @@ with tab5:
         if (
             ktt_min is not None
             and ktt_max is not None
-            and "월정료_수치" in df_filtered.columns
+            and "KTT월정료_수치" in df_filtered.columns
         ):
             df_filtered = df_filtered[
-                df_filtered["월정료_수치"].between(ktt_min, ktt_max)
+                df_filtered["KTT월정료_수치"].between(ktt_min, ktt_max)
             ]
 
         st.markdown(
@@ -1193,7 +1203,6 @@ with tab5:
                 "접수건수",
                 "설치주소",
                 "KTT월정료(조정)",
-                "월정료구간",
                 "계약상태(중)",
                 "서비스(소)",
             ]
