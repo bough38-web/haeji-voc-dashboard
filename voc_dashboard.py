@@ -6,30 +6,117 @@ import pandas as pd
 import streamlit as st
 
 # ----------------------------------------------------
-# 0. 기본 설정 & 라이트톤 스타일
+# 0. 기본 설정 & 라이트톤 스타일 (CSS 개선)
 # ----------------------------------------------------
 st.set_page_config(page_title="해지 VOC 종합 대시보드", layout="wide")
 
 st.markdown(
     """
     <style>
+    /* 전체 배경 & 기본 폰트 */
     .stApp {
-        background-color: #f8fafc;
+        background-color: #f3f4f6;
         color: #111827;
         font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
     }
-    [data-testid="stHeader"] {
-        background-color: #f8fafc;
+
+    /* 본문 컨테이너 여백 */
+    .block-container {
+        padding-top: 0.8rem;
+        padding-bottom: 3rem;
+        padding-left: 1.5rem;
+        padding-right: 1.5rem;
     }
+
+    /* 헤더 영역 배경 */
+    [data-testid="stHeader"] {
+        background-color: #f3f4f6;
+    }
+
+    /* 사이드바 스타일 */
+    section[data-testid="stSidebar"] {
+        background-color: #f9fafb;
+        border-right: 1px solid #e5e7eb;
+    }
+    section[data-testid="stSidebar"] .block-container {
+        padding-top: 1.2rem;
+    }
+
+    /* 제목들 간격 */
+    h2, h3, h4 {
+        margin-top: 0.6rem;
+        margin-bottom: 0.4rem;
+        font-weight: 600;
+    }
+
+    /* 데이터프레임 줄무늬 */
     .dataframe tbody tr:nth-child(odd) {
         background-color: #f9fafb;
     }
     .dataframe tbody tr:nth-child(even) {
         background-color: #eef2ff;
     }
-    h2, h3, h4 {
-        margin-top: 0.8rem;
-        margin-bottom: 0.4rem;
+
+    /* 입력창/셀렉트박스 공통 */
+    textarea, input, select {
+        border-radius: 8px !important;
+    }
+
+    /* 라디오 버튼 라벨 간격 */
+    div[role="radiogroup"] > label {
+        padding-right: 0.75rem;
+    }
+
+    /* 섹션 카드 공통 (피드백, 설명 등) */
+    .section-card {
+        background: #ffffff;
+        border-radius: 16px;
+        padding: 1.0rem 1.2rem;
+        border: 1px solid #e5e7eb;
+        box-shadow: 0 4px 8px rgba(15, 23, 42, 0.04);
+        margin-bottom: 1.2rem;
+    }
+
+    .section-title {
+        font-size: 1.05rem;
+        font-weight: 600;
+        margin-bottom: 0.6rem;
+        display: flex;
+        align-items: center;
+        gap: 0.25rem;
+    }
+
+    /* 피드백 리스트 카드 */
+    .feedback-item {
+        background-color: #f9fafb;
+        border-radius: 12px;
+        padding: 0.7rem 0.9rem;
+        margin-bottom: 0.6rem;
+        border: 1px solid #e5e7eb;
+    }
+    .feedback-meta {
+        font-size: 0.8rem;
+        color: #6b7280;
+        margin-top: 0.2rem;
+    }
+    .feedback-note {
+        font-size: 0.85rem;
+        color: #4b5563;
+        margin-top: 0.2rem;
+    }
+
+    /* 새 처리내용 입력 영역 */
+    .feedback-input-title {
+        font-size: 0.95rem;
+        font-weight: 600;
+        margin-top: 0.5rem;
+        margin-bottom: 0.2rem;
+    }
+
+    /* KPI 윗부분 여백 줄이기 */
+    .element-container:has(> div[data-testid="stMetric"]) {
+        padding-top: 0 !important;
+        padding-bottom: 0.4rem !important;
     }
     </style>
     """,
@@ -191,8 +278,8 @@ df_voc["매칭여부"] = df_voc["계약번호_정제"].apply(
 # ----------------------------------------------------
 # 6. 설치주소 / 월정료 (시설_ 우선 사용) + 월정료 보정/구간
 # ----------------------------------------------------
-# 6-1. 설치주소 표시용 (시설_설치주소 > 설치주소)
 def coalesce_cols(row, candidates):
+    """설치주소 : 시설_설치주소 -> 설치주소 우선 사용"""
     for c in candidates:
         if c in row.index:
             val = row[c]
@@ -206,8 +293,7 @@ df_voc["설치주소_표시"] = df_voc.apply(
     axis=1,
 )
 
-# 6-2. 월정료 처리
-# 우선 사용할 원본 컬럼 선택 (시설_이 있으면 그걸 우선)
+# 월정료 원본 컬럼 선택
 fee_raw_col = None
 if "시설_KTT월정료(조정)" in df_voc.columns:
     fee_raw_col = "시설_KTT월정료(조정)"
@@ -222,9 +308,7 @@ def parse_fee(x: object) -> float:
     s = str(x).strip()
     if s == "" or s.lower() in ["nan", "none"]:
         return np.nan
-    # 콤마 제거
     s = s.replace(",", "")
-    # 숫자/점만 남기기
     digits = "".join(ch for ch in s if (ch.isdigit() or ch == "."))
     if digits == "":
         return np.nan
@@ -234,7 +318,6 @@ def parse_fee(x: object) -> float:
         return np.nan
 
     # 55,000 → 550,000 처럼 10배로 들어간 값 보정
-    # 예: 200,000 이상이면 10으로 나누어 사용
     if v >= 200000:
         v = v / 10.0
     return v
@@ -243,7 +326,6 @@ def parse_fee(x: object) -> float:
 if fee_raw_col is not None:
     df_voc["월정료_수치"] = df_voc[fee_raw_col].apply(parse_fee)
 
-    # 천단위 콤마 / 소숫점 제거한 표시용
     def format_fee(v):
         if pd.isna(v):
             return ""
@@ -251,7 +333,6 @@ if fee_raw_col is not None:
 
     df_voc[fee_raw_col] = df_voc["월정료_수치"].apply(format_fee)
 
-    # 월정료 구간
     def fee_band(v):
         if pd.isna(v):
             return "미기재"
@@ -275,7 +356,6 @@ def compute_risk(row):
     if pd.isna(dt):
         return np.nan, "LOW"
 
-    # dt가 str일 수도 있으므로 방어적 처리
     if not isinstance(dt, (pd.Timestamp, datetime)):
         try:
             dt = pd.to_datetime(dt, errors="coerce")
@@ -339,7 +419,6 @@ display_cols_raw = [c for c in fixed_order if c in df_voc.columns]
 
 
 def filter_valid_columns(cols, df_base):
-    """전부 None/NaN/'None'/'' 인 컬럼은 표시대상에서 제외"""
     valid_cols = []
     for c in cols:
         series = df_base[c]
@@ -363,11 +442,11 @@ def style_risk(df_view: pd.DataFrame):
     def _row_style(row):
         level = row.get("리스크등급", "")
         if level == "HIGH":
-            bg = "#fee2e2"  # red-100
+            bg = "#fee2e2"
         elif level == "MEDIUM":
-            bg = "#fef3c7"  # amber-100
+            bg = "#fef3c7"
         else:
-            bg = "#e0f2fe"  # sky-100
+            bg = "#e0f2fe"
         return [f"background-color: {bg};"] * len(row)
 
     return df_view.style.apply(_row_style, axis=1)
@@ -378,7 +457,6 @@ def style_risk(df_view: pd.DataFrame):
 # ----------------------------------------------------
 st.sidebar.title("🔧 글로벌 필터")
 
-# 날짜 범위 필터
 if "접수일시" in df_voc.columns and df_voc["접수일시"].notna().any():
     min_d = df_voc["접수일시"].min().date()
     max_d = df_voc["접수일시"].max().date()
@@ -392,7 +470,6 @@ if "접수일시" in df_voc.columns and df_voc["접수일시"].notna().any():
 else:
     dr = None
 
-# 지사 필터
 branches_all = sort_branch(df_voc["관리지사"].dropna().unique())
 sel_branches = st.sidebar.multiselect(
     "관리지사(복수 선택)",
@@ -401,7 +478,6 @@ sel_branches = st.sidebar.multiselect(
     key="global_branches",
 )
 
-# 리스크 등급 필터
 risk_all = ["HIGH", "MEDIUM", "LOW"]
 sel_risk = st.sidebar.multiselect(
     "리스크등급",
@@ -410,7 +486,6 @@ sel_risk = st.sidebar.multiselect(
     key="global_risk",
 )
 
-# 매칭여부 필터
 match_all = ["매칭(O)", "비매칭(X)"]
 sel_match = st.sidebar.multiselect(
     "매칭여부",
@@ -419,7 +494,6 @@ sel_match = st.sidebar.multiselect(
     key="global_match",
 )
 
-# 월정료 구간 필터
 fee_filter_global = st.sidebar.radio(
     "월정료 구간(글로벌)",
     options=["전체", "10만 미만", "10만 이상"],
@@ -437,7 +511,6 @@ st.sidebar.caption(
 # ----------------------------------------------------
 voc_filtered_global = df_voc.copy()
 
-# 날짜
 if dr and isinstance(dr, tuple) and len(dr) == 2:
     start_d, end_d = dr
     if isinstance(start_d, date) and isinstance(end_d, date):
@@ -449,25 +522,21 @@ if dr and isinstance(dr, tuple) and len(dr) == 2:
             )
         ]
 
-# 지사
 if sel_branches:
     voc_filtered_global = voc_filtered_global[
         voc_filtered_global["관리지사"].isin(sel_branches)
     ]
 
-# 리스크
 if sel_risk:
     voc_filtered_global = voc_filtered_global[
         voc_filtered_global["리스크등급"].isin(sel_risk)
     ]
 
-# 매칭여부
 if sel_match:
     voc_filtered_global = voc_filtered_global[
         voc_filtered_global["매칭여부"].isin(sel_match)
     ]
 
-# 월정료 구간
 if fee_filter_global != "전체":
     if fee_filter_global == "10만 이상":
         voc_filtered_global = voc_filtered_global[
@@ -488,8 +557,8 @@ unmatched_global = voc_filtered_global[
 # ----------------------------------------------------
 st.markdown("## 📊 해지 VOC 종합 대시보드")
 
-total_voc_rows = len(voc_filtered_global)  # 행 기준
-unique_contracts = voc_filtered_global["계약번호_정제"].nunique()  # 유니크 계약
+total_voc_rows = len(voc_filtered_global)
+unique_contracts = voc_filtered_global["계약번호_정제"].nunique()
 unmatched_contracts = (
     voc_filtered_global[voc_filtered_global["매칭여부"] == "비매칭(X)"]["계약번호_정제"]
     .nunique()
@@ -521,7 +590,7 @@ tab1, tab2, tab3, tab4, tab5 = st.tabs(
 )
 
 # ====================================================
-# TAB 1 — VOC 전체
+# TAB 1 — VOC 전체 (계약번호 기준 요약)
 # ====================================================
 with tab1:
     st.subheader("📘 VOC 전체 (계약번호 기준 요약)")
@@ -628,7 +697,7 @@ with tab1:
         )
 
 # ====================================================
-# TAB 2 — 비매칭 활동대상
+# TAB 2 — 비매칭(X) 활동대상
 # ====================================================
 with tab2:
     st.subheader("🚨 비매칭(X) 활동대상 (계약번호 기준)")
@@ -740,7 +809,9 @@ with tab2:
             if isinstance(state, dict):
                 if "selected_rows" in state and state["selected_rows"]:
                     selected_rows = state["selected_rows"]
-                elif "selection" in state and isinstance(state["selection"], dict):
+                elif "selection" in state and isinstance(
+                    state["selection"], dict
+                ):
                     rows_sel = state["selection"].get("rows")
                     if rows_sel:
                         selected_rows = rows_sel
@@ -749,7 +820,9 @@ with tab2:
 
             u_contract_list = df_u_summary["계약번호_정제"].astype(str).tolist()
             default_index = 0
-            if selected_idx is not None and 0 <= selected_idx < len(u_contract_list):
+            if selected_idx is not None and 0 <= selected_idx < len(
+                u_contract_list
+            ):
                 default_index = selected_idx + 1
 
             st.markdown("### 📂 선택한 계약번호 상세 VOC 이력")
@@ -841,7 +914,7 @@ with tab3:
             st.line_chart(trend, use_container_width=True)
 
 # ====================================================
-# TAB 4 — 계약별 드릴다운 (피드백 포함)
+# TAB 4 — 계약별 드릴다운
 # ====================================================
 with tab4:
     st.subheader("🔍 계약번호 기준 통합 드릴다운")
@@ -915,6 +988,7 @@ with tab4:
 
     if drill.empty:
         st.info("조건에 맞는 계약이 없습니다. 필터를 조정해보세요.")
+        sel_cn = None
     else:
         drill_sorted = drill.sort_values("접수일시", ascending=False)
         g = drill_sorted.groupby("계약번호_정제")
@@ -998,9 +1072,7 @@ with tab4:
                 m2_2.metric("리스크등급", str(base_info.get("리스크등급", "")))
                 m2_3.metric("매칭여부", str(base_info.get("매칭여부", "")))
 
-                st.caption(
-                    f"📍 설치주소: {str(base_info.get('설치주소_표시', ''))}"
-                )
+                st.caption(f"📍 설치주소: {str(base_info.get('설치주소_표시', ''))}")
                 if fee_raw_col is not None:
                     st.caption(
                         f"💰 {fee_raw_col}: {str(base_info.get(fee_raw_col, ''))}"
@@ -1034,166 +1106,128 @@ with tab4:
 
             st.markdown("---")
 
-            # ----------------------------------------------------
-            # 피드백 이력 & 입력 (관리자 비밀번호로 삭제/수정 가능)
-            # ----------------------------------------------------
-            st.markdown("#### 📝 고객대응 / 현장 처리내역")
+# ----------------------------------------------------
+# 피드백 이력 & 입력 (선택된 sel_cn 기준)
+# ----------------------------------------------------
+st.markdown(
+    '<div class="section-card"><div class="section-title">📝 고객대응 / 현장 처리내역</div>',
+    unsafe_allow_html=True,
+)
 
-            # 세션에서 피드백 데이터 불러오기
-            fb_all = st.session_state["feedback_df"]
-            fb_sel = fb_all[fb_all["계약번호_정제"].astype(str) == str(sel_cn)].copy()
-            fb_sel = fb_sel.sort_values("등록일자", ascending=False)
+if "sel_cn" not in locals() or sel_cn is None:
+    st.info("상단 드릴다운 탭에서 먼저 계약을 선택하면 처리내역을 관리할 수 있습니다.")
+else:
+    st.caption(f"선택된 계약번호: **{sel_cn}** 기준 처리내역 관리")
 
-            # -------------------------
-            # 관리자 비밀번호 입력
-            # -------------------------
-            ADMIN_CODE = "1234"
-            admin_pw = st.text_input(
-                "관리자 비밀번호 입력 (삭제/수정 시 필요)", type="password"
-            )
-            is_admin = admin_pw == ADMIN_CODE
+    # 세션에서 피드백 데이터 불러오기
+    fb_all = st.session_state["feedback_df"]
+    fb_sel = fb_all[fb_all["계약번호_정제"].astype(str) == str(sel_cn)].copy()
+    fb_sel = fb_sel.sort_values("등록일자", ascending=False)
 
-            # ---- 피드백 목록 표시 ----
-            if fb_sel.empty:
-                st.info("등록된 처리 이력이 없습니다.")
-            else:
-                st.markdown("##### 📄 등록된 처리내역")
+    # 관리자 비밀번호 입력
+    ADMIN_CODE = "1234"
+    admin_pw = st.text_input("관리자 비밀번호 입력 (삭제/수정 시 필요)", type="password")
+    is_admin = admin_pw == ADMIN_CODE
 
-                for idx, row in fb_sel.iterrows():
-                    with st.container():
-                        col1, col2 = st.columns([6, 1])
+    # ---- 피드백 목록 표시 ----
+    st.markdown("##### 📄 등록된 처리내역")
+    if fb_sel.empty:
+        st.info("등록된 처리 이력이 없습니다.")
+    else:
+        for idx, row in fb_sel.iterrows():
+            with st.container():
+                st.markdown('<div class="feedback-item">', unsafe_allow_html=True)
+                col1, col2 = st.columns([6, 1])
 
-                        with col1:
-                            st.write(f"**내용:** {row['고객대응내용']}")
-                            st.write(
-                                f"등록자: {row['등록자']} | 등록일: {row['등록일자']}"
-                            )
-                            if row.get("비고"):
-                                st.write(f"비고: {row['비고']}")
-
-                        with col2:
-                            if is_admin:
-                                if st.button("🗑 삭제", key=f"del_{idx}"):
-                                    fb_all = fb_all.drop(index=idx)
-                                    st.session_state["feedback_df"] = fb_all
-                                    save_feedback(FEEDBACK_PATH, fb_all)
-                                    st.success("삭제되었습니다.")
-                                    st.rerun()
-                            else:
-                                st.write("🔒")
-
-            # -------------------------
-            # 수정 기능
-            # -------------------------
-            if is_admin and not fb_sel.empty:
-                st.markdown("##### ✏️ 기존 처리내용 수정")
-
-                edit_options = [
-                    f"{row['등록일자']} — {row['고객대응내용'][:15]}..."
-                    for _, row in fb_sel.iterrows()
-                ]
-                sel_edit = st.selectbox("수정할 항목 선택", ["(선택)"] + edit_options)
-
-                if sel_edit != "(선택)":
-                    edit_idx = fb_sel.index[edit_options.index(sel_edit)]
-                    original = fb_sel.loc[edit_idx]
-
-                    new_text = st.text_area(
-                        "처리내용 수정", value=original["고객대응내용"]
+                with col1:
+                    st.write(f"**내용:** {row['고객대응내용']}")
+                    st.markdown(
+                        f"<div class='feedback-meta'>등록자: {row['등록자']} | 등록일: {row['등록일자']}</div>",
+                        unsafe_allow_html=True,
                     )
-                    new_note = st.text_input(
-                        "비고 수정", value=original.get("비고", "")
-                    )
-
-                    if st.button("💾 수정 저장", key="edit_save"):
-                        st.session_state["feedback_df"].loc[
-                            edit_idx, "고객대응내용"
-                        ] = new_text
-                        st.session_state["feedback_df"].loc[
-                            edit_idx, "비고"
-                        ] = new_note
-                        save_feedback(
-                            FEEDBACK_PATH, st.session_state["feedback_df"]
+                    if row.get("비고"):
+                        st.markdown(
+                            f"<div class='feedback-note'>비고: {row['비고']}</div>",
+                            unsafe_allow_html=True,
                         )
-                        st.success("수정되었습니다.")
-                        st.rerun()
 
-            # -------------------------
-            # 신규 피드백 등록
-            # -------------------------
-            st.markdown("##### ➕ 새 처리내용 등록")
+                with col2:
+                    if is_admin:
+                        if st.button("🗑 삭제", key=f"del_{idx}"):
+                            fb_all = fb_all.drop(index=idx)
+                            st.session_state["feedback_df"] = fb_all
+                            save_feedback(FEEDBACK_PATH, fb_all)
+                            st.success("삭제되었습니다.")
+                            st.rerun()
+                    else:
+                        st.write("🔒")
+                st.markdown("</div>", unsafe_allow_html=True)
 
-            c1, c2 = st.columns([3, 1])
-            new_fb = c1.text_area("고객대응 / 현장 처리내용", key="new_fb_text")
-            new_user = c2.text_input("등록자", key="new_fb_user")
-            new_note = c2.text_input("비고", key="new_fb_note")
+    # -------------------------
+    # 수정 기능
+    # -------------------------
+    if is_admin and not fb_sel.empty:
+        st.markdown("##### ✏️ 기존 처리내용 수정")
 
-            if st.button("💾 새 처리내역 저장", key="new_fb_save"):
-                if not new_fb.strip():
-                    st.warning("처리내용을 입력하세요.")
-                elif not new_user.strip():
-                    st.warning("등록자를 입력하세요.")
-                else:
-                    new_row = pd.DataFrame(
-                        [
-                            {
-                                "계약번호_정제": sel_cn,
-                                "고객대응내용": new_fb.strip(),
-                                "등록자": new_user.strip(),
-                                "등록일자": datetime.now().strftime(
-                                    "%Y-%m-%d %H:%M:%S"
-                                ),
-                                "비고": new_note.strip(),
-                            }
-                        ]
-                    )
+        edit_options = [
+            f"{row['등록일자']} — {row['고객대응내용'][:15]}..."
+            for _, row in fb_sel.iterrows()
+        ]
+        sel_edit = st.selectbox("수정할 항목 선택", ["(선택)"] + edit_options)
 
-                    st.session_state["feedback_df"] = pd.concat(
-                        [st.session_state["feedback_df"], new_row],
-                        ignore_index=True,
-                    )
-                    save_feedback(
-                        FEEDBACK_PATH, st.session_state["feedback_df"]
-                    )
-                    st.success("등록되었습니다.")
-                    st.rerun()
+        if sel_edit != "(선택)":
+            edit_idx = fb_sel.index[edit_options.index(sel_edit)]
+            original = fb_sel.loc[edit_idx]
 
-            st.markdown("---")
+            new_text = st.text_area("처리내용 수정", value=original["고객대응내용"])
+            new_note = st.text_input("비고 수정", value=original.get("비고", ""))
 
-            dcol1, dcol2 = st.columns(2)
+            if st.button("💾 수정 저장", key="edit_save"):
+                st.session_state["feedback_df"].loc[edit_idx, "고객대응내용"] = new_text
+                st.session_state["feedback_df"].loc[edit_idx, "비고"] = new_note
+                save_feedback(FEEDBACK_PATH, st.session_state["feedback_df"])
+                st.success("수정되었습니다.")
+                st.rerun()
 
-            if not voc_hist.empty:
-                dcol1.download_button(
-                    "📥 선택 계약 VOC 이력 다운로드 (CSV)",
-                    voc_hist.to_csv(index=False).encode("utf-8-sig"),
-                    file_name=f"VOC이력_{sel_cn}.csv",
-                    mime="text/csv",
-                )
+    # -------------------------
+    # 신규 피드백 등록
+    # -------------------------
+    st.markdown("##### ➕ 새 처리내용 등록")
 
-            export_frames = []
-            if not voc_hist.empty:
-                v_exp = voc_hist.copy()
-                v_exp.insert(0, "구분", "VOC")
-                export_frames.append(v_exp)
+    c1, c2 = st.columns([3, 1])
+    new_fb = c1.text_area("고객대응 / 현장 처리내용", key="new_fb_text")
+    new_user = c2.text_input("등록자", key="new_fb_user")
+    new_note = c2.text_input("비고", key="new_fb_note")
 
-            if not other_hist.empty:
-                o_exp = other_hist.copy()
-                o_exp.insert(0, "구분", "기타출처")
-                export_frames.append(o_exp)
+    if st.button("💾 새 처리내역 저장", key="new_fb_save"):
+        if not new_fb.strip():
+            st.warning("처리내용을 입력하세요.")
+        elif not new_user.strip():
+            st.warning("등록자를 입력하세요.")
+        else:
+            new_row = pd.DataFrame(
+                [
+                    {
+                        "계약번호_정제": sel_cn,
+                        "고객대응내용": new_fb.strip(),
+                        "등록자": new_user.strip(),
+                        "등록일자": datetime.now().strftime(
+                            "%Y-%m-%d %H:%M:%S"
+                        ),
+                        "비고": new_note.strip(),
+                    }
+                ]
+            )
 
-            if not fb_sel.empty:
-                f_exp = fb_sel.copy()
-                f_exp.insert(0, "구분", "피드백")
-                export_frames.append(f_exp)
+            st.session_state["feedback_df"] = pd.concat(
+                [st.session_state["feedback_df"], new_row],
+                ignore_index=True,
+            )
+            save_feedback(FEEDBACK_PATH, st.session_state["feedback_df"])
+            st.success("등록되었습니다.")
+            st.rerun()
 
-            if export_frames:
-                merged_export = pd.concat(export_frames, ignore_index=True)
-                dcol2.download_button(
-                    "📥 선택 계약 통합 이력 다운로드 (CSV)",
-                    merged_export.to_csv(index=False).encode("utf-8-sig"),
-                    file_name=f"통합이력_{sel_cn}.csv",
-                    mime="text/csv",
-                )
+st.markdown("</div>", unsafe_allow_html=True)  # section-card 닫기
 
 # ====================================================
 # TAB 5 — 비매칭 활동대상 정밀 필터
