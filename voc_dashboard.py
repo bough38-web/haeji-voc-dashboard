@@ -1270,6 +1270,100 @@ with tab4:
 
             st.markdown("---")
 
+
+
+        st.markdown("#### 📈 일별 비매칭 계약 추이 (유니크 계약)")
+        st.line_chart(trend, use_container_width=True)
+
+        st.markdown("---")
+
+        # ==========================================
+        # 📬 담당자별 알림 발송 섹션
+        # ==========================================
+        st.markdown("### ✉️ 담당자별 알림 발송")
+
+        # 사용할 담당자 목록 (비어있지 않은 값만)
+        mgr_list_notify = (
+            unmatched_global["구역담당자_통합"]
+            .dropna()
+            .astype(str)
+            .str.strip()
+            .replace("", np.nan)
+            .dropna()
+            .unique()
+            .tolist()
+        )
+
+        if not mgr_list_notify:
+            st.info("알림을 보낼 담당자 정보(구역담당자_통합)가 없습니다.")
+        else:
+            col_n1, col_n2 = st.columns([2, 3])
+
+            sel_mgr_notify = col_n1.selectbox(
+                "알림을 보낼 담당자 선택",
+                options=mgr_list_notify,
+                key="notify_mgr_select",
+            )
+
+            channel = col_n2.radio(
+                "발송 채널 선택",
+                options=["이메일", "SMS", "카카오톡"],
+                horizontal=True,
+                key="notify_channel_radio",
+            )
+
+            # 선택된 담당자 기준 비매칭 계약 요약
+            mgr_voc = unmatched_global[
+                unmatched_global["구역담당자_통합"].astype(str) == str(sel_mgr_notify)
+            ].copy()
+
+            st.caption(
+                f"선택된 담당자 {sel_mgr_notify}님의 비매칭(X) 계약 수: "
+                f"**{mgr_voc['계약번호_정제'].nunique():,} 건**"
+            )
+
+            # 발송 메세지 템플릿
+            default_subject = f"[해지 VOC] {sel_mgr_notify}님 담당 비매칭 VOC 현황 알림"
+            default_body = (
+                f"{sel_mgr_notify}님,\n\n"
+                f"현재 담당하신 비매칭(X) 해지 VOC 계약이 "
+                f"{mgr_voc['계약번호_정제'].nunique():,}건 존재합니다.\n"
+                f"대시보드를 통해 상세 이력을 확인하시고, 필요 시 고객 대응을 진행 부탁드립니다.\n\n"
+                f"- 기준일: {today.strftime('%Y-%m-%d')}\n"
+            )
+
+            if channel == "이메일":
+                subject = st.text_input("메일 제목", value=default_subject, key="notify_email_subj")
+                body = st.text_area("메일 본문", value=default_body, key="notify_email_body", height=160)
+            else:
+                # SMS / 카카오톡은 제목 없이 본문만
+                body = st.text_area("메시지 내용", value=default_body, key="notify_msg_body", height=160)
+                subject = None
+
+            # 담당자 연락처 조회
+            contact = get_manager_contact(voc_filtered_global, sel_mgr_notify)
+
+            with st.expander("📇 담당자 연락처 확인"):
+                st.write("추정된 담당자 연락처(엑셀 컬럼 기반 자동 탐색):")
+                st.write(f"- 이메일: {contact.get('email') or '❌ 없음'}")
+                st.write(f"- 휴대폰: {contact.get('phone') or '❌ 없음'}")
+                st.write(f"- 카카오ID: {contact.get('kakao') or '❌ 없음'}")
+                st.caption("※ 필요한 경우 merged.xlsx에 담당자 이메일/휴대폰/카카오ID 컬럼을 추가해 주세요.")
+
+            # 발송 버튼
+            if st.button("🚀 알림 발송(테스트 모드)", key="notify_send_btn"):
+                if channel == "이메일":
+                    ok, msg = send_email(contact.get("email"), subject, body)
+                elif channel == "SMS":
+                    ok, msg = send_sms(contact.get("phone"), body)
+                else:
+                    ok, msg = send_kakao(contact.get("kakao"), body)
+
+                if ok:
+                    st.success(msg)
+                else:
+                    st.error(msg)
+
 # ----------------------------------------------------
 # 피드백 이력 & 입력 (선택된 sel_cn 기준, 공통 섹션)
 # ----------------------------------------------------
