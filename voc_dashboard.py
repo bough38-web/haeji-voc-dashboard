@@ -1049,57 +1049,110 @@ with tab4:
 
             st.markdown("---")
 
-            # 피드백 이력 & 입력
-            st.markdown("#### 📝 고객대응 / 현장 처리내역")
+# ----------------------------------------------------
+# 피드백 이력 & 입력
+# ----------------------------------------------------
+st.markdown("#### 📝 고객대응 / 현장 처리내역")
 
-            fb_all = st.session_state["feedback_df"]
-            fb_sel = fb_all[
-                fb_all["계약번호_정제"].astype(str) == str(sel_cn)
-            ].copy()
-            fb_sel = fb_sel.sort_values("등록일자", ascending=False)
+# 세션에서 피드백 데이터 불러오기
+fb_all = st.session_state["feedback_df"]
+fb_sel = fb_all[fb_all["계약번호_정제"].astype(str) == str(sel_cn)].copy()
+fb_sel = fb_sel.sort_values("등록일자", ascending=False)
 
-            if fb_sel.empty:
-                st.info("등록된 처리 이력이 없습니다.")
-            else:
-                st.dataframe(
-                    fb_sel,
-                    use_container_width=True,
-                    height=220,
-                )
+# -------------------------
+# 관리자 비밀번호 입력
+# -------------------------
+ADMIN_CODE = "1234"
+admin_pw = st.text_input("관리자 비밀번호 입력 (삭제/수정 시 필요)", type="password")
+is_admin = admin_pw == ADMIN_CODE
 
-            st.markdown("##### ✏️ 새 처리내용 등록")
+# ---- 피드백 목록 표시 ----
+if fb_sel.empty:
+    st.info("등록된 처리 이력이 없습니다.")
+else:
+    st.markdown("##### 📄 등록된 처리내역")
 
-            fb1, fb2 = st.columns([3, 1])
-            new_fb = fb1.text_area("고객대응 / 현장 처리내용", key="fb_content")
-            new_user = fb2.text_input("등록자", key="fb_user")
-            new_note = fb2.text_input("비고", key="fb_note")
+    for idx, row in fb_sel.iterrows():
+        with st.container():
+            col1, col2 = st.columns([6, 1])
 
-            if st.button("💾 처리내역 저장", key="fb_save_btn"):
-                if not new_fb.strip():
-                    st.warning("처리내용을 입력하세요.")
-                elif not new_user.strip():
-                    st.warning("등록자를 입력하세요.")
+            with col1:
+                st.write(f"**내용:** {row['고객대응내용']}")
+                st.write(f"등록자: {row['등록자']} | 등록일: {row['등록일자']}")
+                if row.get("비고"):
+                    st.write(f"비고: {row['비고']}")
+
+            with col2:
+                if is_admin:
+                    if st.button("🗑 삭제", key=f"del_{idx}"):
+                        fb_all = fb_all.drop(index=idx)
+                        st.session_state["feedback_df"] = fb_all
+                        save_feedback(FEEDBACK_PATH, fb_all)
+                        st.success("삭제되었습니다.")
+                        st.rerun()
                 else:
-                    new_row = pd.DataFrame(
-                        [
-                            {
-                                "계약번호_정제": sel_cn,
-                                "고객대응내용": new_fb.strip(),
-                                "등록자": new_user.strip(),
-                                "등록일자": datetime.now().strftime(
-                                    "%Y-%m-%d %H:%M:%S"
-                                ),
-                                "비고": new_note.strip(),
-                            }
-                        ]
-                    )
-                    st.session_state["feedback_df"] = pd.concat(
-                        [st.session_state["feedback_df"], new_row],
-                        ignore_index=True,
-                    )
-                    save_feedback(FEEDBACK_PATH, st.session_state["feedback_df"])
-                    st.success("처리내역이 저장되었습니다.")
-                    st.rerun()
+                    st.write("🔒")
+
+# -------------------------
+# 수정 기능
+# -------------------------
+if is_admin and not fb_sel.empty:
+    st.markdown("##### ✏️ 기존 처리내용 수정")
+
+    # 수정할 항목 선택
+    edit_options = [
+        f"{row['등록일자']} — {row['고객대응내용'][:15]}..." for _, row in fb_sel.iterrows()
+    ]
+    sel_edit = st.selectbox("수정할 항목 선택", ["(선택)"] + edit_options)
+
+    if sel_edit != "(선택)":
+        # 선택한 행의 실제 인덱스 찾기
+        edit_idx = fb_sel.index[edit_options.index(sel_edit)]
+        original = fb_sel.loc[edit_idx]
+
+        new_text = st.text_area("처리내용 수정", value=original["고객대응내용"])
+        new_note = st.text_input("비고 수정", value=original.get("비고", ""))
+
+        if st.button("💾 수정 저장", key="edit_save"):
+            st.session_state["feedback_df"].loc[edit_idx, "고객대응내용"] = new_text
+            st.session_state["feedback_df"].loc[edit_idx, "비고"] = new_note
+            save_feedback(FEEDBACK_PATH, st.session_state["feedback_df"])
+            st.success("수정되었습니다.")
+            st.rerun()
+
+# -------------------------
+# 신규 피드백 등록
+# -------------------------
+st.markdown("##### ➕ 새 처리내용 등록")
+
+c1, c2 = st.columns([3, 1])
+new_fb = c1.text_area("고객대응 / 현장 처리내용", key="new_fb_text")
+new_user = c2.text_input("등록자", key="new_fb_user")
+new_note = c2.text_input("비고", key="new_fb_note")
+
+if st.button("💾 새 처리내역 저장", key="new_fb_save"):
+    if not new_fb.strip():
+        st.warning("처리내용을 입력하세요.")
+    elif not new_user.strip():
+        st.warning("등록자를 입력하세요.")
+    else:
+        new_row = pd.DataFrame(
+            [{
+                "계약번호_정제": sel_cn,
+                "고객대응내용": new_fb.strip(),
+                "등록자": new_user.strip(),
+                "등록일자": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                "비고": new_note.strip(),
+            }]
+        )
+
+        st.session_state["feedback_df"] = pd.concat(
+            [st.session_state["feedback_df"], new_row],
+            ignore_index=True,
+        )
+        save_feedback(FEEDBACK_PATH, st.session_state["feedback_df"])
+        st.success("등록되었습니다.")
+        st.rerun()
 
             st.markdown("---")
 
