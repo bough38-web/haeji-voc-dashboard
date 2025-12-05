@@ -6,6 +6,95 @@ import pandas as pd
 import streamlit as st
 import plotly.express as px
 
+# ============================
+# 담당자 연락처 / 발송 유틸
+# ============================
+
+def _pick_first_non_null(series: pd.Series):
+    """시리즈에서 첫 번째로 값이 있는 항목만 뽑기"""
+    series = series.dropna().astype(str).str.strip()
+    series = series[series != ""]
+    return series.iloc[0] if not series.empty else None
+
+
+def get_manager_contact(df_base: pd.DataFrame, manager_name: str):
+    """
+    구역담당자_통합 기준으로 담당자 연락처(이메일/휴대폰/카카오ID)를 추출
+    엑셀에 어떤 컬럼이 있냐에 따라 자동으로 찾아봄
+    """
+    df_mgr = df_base[df_base["구역담당자_통합"].astype(str) == str(manager_name)]
+
+    if df_mgr.empty:
+        return {"email": None, "phone": None, "kakao": None}
+
+    # 사용될 수 있는 컬럼 후보들
+    email_cols = ["담당자이메일", "이메일", "구역담당자이메일"]
+    phone_cols = ["담당자휴대폰", "휴대폰번호", "연락처", "담당자연락처"]
+    kakao_cols = ["담당자카카오ID", "카카오ID", "카카오톡ID"]
+
+    email = None
+    for col in email_cols:
+        if col in df_mgr.columns:
+            email = _pick_first_non_null(df_mgr[col])
+            if email:
+                break
+
+    phone = None
+    for col in phone_cols:
+        if col in df_mgr.columns:
+            phone = _pick_first_non_null(df_mgr[col])
+            if phone:
+                break
+
+    kakao = None
+    for col in kakao_cols:
+        if col in df_mgr.columns:
+            kakao = _pick_first_non_null(df_mgr[col])
+            if kakao:
+                break
+
+    return {"email": email, "phone": phone, "kakao": kakao}
+
+
+# ----------------------------
+# 실제 발송 함수 (지금은 시뮬레이션)
+# 나중에 여기만 SMTP / SMS API / 카카오 API로 교체
+# ----------------------------
+def send_email(to_addr: str, subject: str, body: str):
+    """
+    실제 운영 시:
+    - 회사 SMTP 서버 세팅
+    - 또는 메일 발송 API 연동
+    """
+    if not to_addr:
+        return False, "수신 이메일 주소 없음"
+    # TODO: 여기에 SMTP 발송 코드 연결
+    # 현재는 로그만 찍는 시뮬레이션
+    print(f"[EMAIL] to={to_addr}, subject={subject}\n{body}")
+    return True, "테스트 모드: 이메일 발송 시뮬레이션 완료"
+
+
+def send_sms(phone: str, body: str):
+    """
+    실제 운영 시:
+    - Twilio, KT 문자, 토스트클라우드 등 SMS API 연동
+    """
+    if not phone:
+        return False, "수신 휴대폰 번호 없음"
+    print(f"[SMS] to={phone}\n{body}")
+    return True, "테스트 모드: SMS 발송 시뮬레이션 완료"
+
+
+def send_kakao(kakao_id: str, body: str):
+    """
+    실제 운영 시:
+    - 카카오 비즈메시지 / 친구톡 API 연동
+    """
+    if not kakao_id:
+        return False, "카카오 ID 없음"
+    print(f"[KAKAO] to={kakao_id}\n{body}")
+    return True, "테스트 모드: 카카오톡 발송 시뮬레이션 완료"
+
 # ----------------------------------------------------
 # 0. 기본 설정 & 라이트톤 스타일 (CSS 개선)
 # ----------------------------------------------------
