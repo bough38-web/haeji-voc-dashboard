@@ -4,6 +4,7 @@ from datetime import datetime, date
 import numpy as np
 import pandas as pd
 import streamlit as st
+import plotly.express as px
 
 # ----------------------------------------------------
 # 0. 기본 설정 & 라이트톤 스타일 (CSS 개선)
@@ -856,7 +857,7 @@ with tab2:
             )
 
 # ====================================================
-# TAB 3 — 지사/담당자 시각화
+# TAB 3 — 지사/담당자 시각화 (Plotly 적용)
 # ====================================================
 with tab3:
     st.subheader("📊 지사 / 담당자별 비매칭 리스크 현황")
@@ -866,6 +867,7 @@ with tab3:
     else:
         c1, c2, c3 = st.columns(3)
 
+        # 지사별 비매칭 계약 수
         bc = (
             unmatched_global.groupby("관리지사")["계약번호_정제"]
             .nunique()
@@ -875,8 +877,27 @@ with tab3:
 
         with c1:
             st.markdown("#### 🏢 지사별 비매칭 계약 수 (유니크 계약)")
-            st.bar_chart(bc, use_container_width=True)
+            if not bc.empty:
+                bc_df = bc.reset_index()
+                bc_df.columns = ["관리지사", "비매칭계약수"]
+                fig_bc = px.bar(
+                    bc_df,
+                    x="관리지사",
+                    y="비매칭계약수",
+                    text="비매칭계약수",
+                )
+                fig_bc.update_traces(textposition="outside", marker_color="#4f46e5")
+                fig_bc.update_layout(
+                    margin=dict(l=10, r=10, t=30, b=10),
+                    xaxis_title=None,
+                    yaxis_title=None,
+                    height=280,
+                )
+                st.plotly_chart(fig_bc, use_container_width=True, config={"displayModeBar": False})
+            else:
+                st.info("표시할 데이터가 없습니다.")
 
+        # 담당자별 비매칭 TOP 15
         mc = (
             unmatched_global.groupby("구역담당자_통합")["계약번호_정제"]
             .nunique()
@@ -887,8 +908,28 @@ with tab3:
 
         with c2:
             st.markdown("#### 👤 담당자별 비매칭 TOP 15 (유니크 계약)")
-            st.bar_chart(mc, use_container_width=True)
+            if not mc.empty:
+                mc_df = mc.reset_index()
+                mc_df.columns = ["구역담당자", "비매칭계약수"]
+                fig_mc = px.bar(
+                    mc_df,
+                    x="구역담당자",
+                    y="비매칭계약수",
+                    text="비매칭계약수",
+                )
+                fig_mc.update_traces(textposition="outside", marker_color="#22c55e")
+                fig_mc.update_layout(
+                    margin=dict(l=10, r=10, t=30, b=90),
+                    xaxis_title=None,
+                    yaxis_title=None,
+                    xaxis_tickangle=-40,
+                    height=280,
+                )
+                st.plotly_chart(fig_mc, use_container_width=True, config={"displayModeBar": False})
+            else:
+                st.info("표시할 데이터가 없습니다.")
 
+        # 리스크 등급 분포
         rc = (
             unmatched_global["리스크등급"]
             .value_counts()
@@ -898,10 +939,26 @@ with tab3:
 
         with c3:
             st.markdown("#### 🔥 리스크 등급 분포 (비매칭, 계약 단위)")
-            st.bar_chart(rc, use_container_width=True)
+            rc_df = rc.reset_index()
+            rc_df.columns = ["리스크등급", "건수"]
+            fig_rc = px.bar(
+                rc_df,
+                x="리스크등급",
+                y="건수",
+                text="건수",
+            )
+            fig_rc.update_traces(textposition="outside", marker_color="#f97316")
+            fig_rc.update_layout(
+                margin=dict(l=10, r=10, t=30, b=10),
+                xaxis_title=None,
+                yaxis_title=None,
+                height=280,
+            )
+            st.plotly_chart(fig_rc, use_container_width=True, config={"displayModeBar": False})
 
         st.markdown("---")
 
+        # 일별 비매칭 계약 추이
         if "접수일시" in unmatched_global.columns:
             trend = (
                 unmatched_global.assign(접수일=unmatched_global["접수일시"].dt.date)
@@ -911,7 +968,25 @@ with tab3:
                 .sort_index()
             )
             st.markdown("#### 📈 일별 비매칭 계약 추이 (유니크 계약)")
-            st.line_chart(trend, use_container_width=True)
+            if not trend.empty:
+                trend_df = trend.reset_index()
+                trend_df.columns = ["접수일", "비매칭계약수"]
+                fig_trend = px.line(
+                    trend_df,
+                    x="접수일",
+                    y="비매칭계약수",
+                    markers=True,
+                )
+                fig_trend.update_traces(line_width=2)
+                fig_trend.update_layout(
+                    margin=dict(l=10, r=10, t=30, b=10),
+                    xaxis_title=None,
+                    yaxis_title=None,
+                    height=320,
+                )
+                st.plotly_chart(fig_trend, use_container_width=True, config={"displayModeBar": False})
+            else:
+                st.info("표시할 데이터가 없습니다.")
 
 # ====================================================
 # TAB 4 — 계약별 드릴다운
@@ -1107,7 +1182,7 @@ with tab4:
             st.markdown("---")
 
 # ----------------------------------------------------
-# 피드백 이력 & 입력 (선택된 sel_cn 기준)
+# 피드백 이력 & 입력 (선택된 sel_cn 기준, 공통 섹션)
 # ----------------------------------------------------
 st.markdown(
     '<div class="section-card"><div class="section-title">📝 고객대응 / 현장 처리내역</div>',
@@ -1115,7 +1190,7 @@ st.markdown(
 )
 
 if "sel_cn" not in locals() or sel_cn is None:
-    st.info("상단 드릴다운 탭에서 먼저 계약을 선택하면 처리내역을 관리할 수 있습니다.")
+    st.info("드릴다운 탭에서 먼저 계약을 선택하면 처리내역을 관리할 수 있습니다.")
 else:
     st.caption(f"선택된 계약번호: **{sel_cn}** 기준 처리내역 관리")
 
@@ -1194,10 +1269,10 @@ else:
     # -------------------------
     st.markdown("##### ➕ 새 처리내용 등록")
 
-    c1, c2 = st.columns([3, 1])
-    new_fb = c1.text_area("고객대응 / 현장 처리내용", key="new_fb_text")
-    new_user = c2.text_input("등록자", key="new_fb_user")
-    new_note = c2.text_input("비고", key="new_fb_note")
+    c1_fb, c2_fb = st.columns([3, 1])
+    new_fb = c1_fb.text_area("고객대응 / 현장 처리내용", key="new_fb_text")
+    new_user = c2_fb.text_input("등록자", key="new_fb_user")
+    new_note = c2_fb.text_input("비고", key="new_fb_note")
 
     if st.button("💾 새 처리내역 저장", key="new_fb_save"):
         if not new_fb.strip():
