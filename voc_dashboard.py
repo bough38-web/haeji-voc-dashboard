@@ -1,16 +1,16 @@
 import os
 from datetime import datetime, date
-import smtplib
-from email.message import EmailMessage
 
 import numpy as np
 import pandas as pd
 import streamlit as st
+import smtplib
+from email.message import EmailMessage
 
-# ----------------------------------------------------
-# 0. 기본 설정 & 라이트톤 스타일 (CSS 개선)
-# ----------------------------------------------------
-st.set_page_config(page_title="해지 VOC 종합 대시보드", layout="wide")
+# ====================================================
+# 0. 기본 설정 & 스타일
+# ====================================================
+st.set_page_config(page_title="해지VOC 담당자 안내 및 알림", layout="wide")
 
 st.markdown(
     """
@@ -20,15 +20,18 @@ st.markdown(
         color: #111827;
         font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
     }
+
     .block-container {
         padding-top: 0.8rem;
         padding-bottom: 3rem;
         padding-left: 1.5rem;
         padding-right: 1.5rem;
     }
+
     [data-testid="stHeader"] {
         background-color: #f3f4f6;
     }
+
     section[data-testid="stSidebar"] {
         background-color: #f9fafb;
         border-right: 1px solid #e5e7eb;
@@ -36,23 +39,24 @@ st.markdown(
     section[data-testid="stSidebar"] .block-container {
         padding-top: 1.2rem;
     }
+
     h2, h3, h4 {
-        margin-top: 0.6rem;
+        margin-top: 0.4rem;
         margin-bottom: 0.4rem;
         font-weight: 600;
     }
+
     .dataframe tbody tr:nth-child(odd) {
         background-color: #f9fafb;
     }
     .dataframe tbody tr:nth-child(even) {
         background-color: #eef2ff;
     }
+
     textarea, input, select {
         border-radius: 8px !important;
     }
-    div[role="radiogroup"] > label {
-        padding-right: 0.75rem;
-    }
+
     .section-card {
         background: #ffffff;
         border-radius: 16px;
@@ -61,6 +65,7 @@ st.markdown(
         box-shadow: 0 4px 8px rgba(15, 23, 42, 0.04);
         margin-bottom: 1.2rem;
     }
+
     .section-title {
         font-size: 1.05rem;
         font-weight: 600;
@@ -69,52 +74,59 @@ st.markdown(
         align-items: center;
         gap: 0.25rem;
     }
-    .feedback-item {
-        background-color: #f9fafb;
-        border-radius: 12px;
-        padding: 0.7rem 0.9rem;
-        margin-bottom: 0.6rem;
-        border: 1px solid #e5e7eb;
-    }
-    .feedback-meta {
-        font-size: 0.8rem;
-        color: #6b7280;
-        margin-top: 0.2rem;
-    }
-    .feedback-note {
+
+    .help-text {
         font-size: 0.85rem;
         color: #4b5563;
         margin-top: 0.2rem;
     }
-    .feedback-input-title {
-        font-size: 0.95rem;
-        font-weight: 600;
-        margin-top: 0.5rem;
-        margin-bottom: 0.2rem;
+
+    .metric-badge {
+        font-size: 0.8rem;
+        padding: 0.15rem 0.4rem;
+        border-radius: 999px;
+        background-color: #eef2ff;
+        color: #4f46e5;
+        display: inline-block;
+        margin-left: 0.4rem;
     }
-    .element-container:has(> div[data-testid="stMetric"]) {
-        padding-top: 0 !important;
-        padding-bottom: 0.4rem !important;
+
+    .email-preview {
+        background-color: #0f172a;
+        color: #e5e7eb;
+        border-radius: 12px;
+        padding: 0.75rem 0.9rem;
+        font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+        font-size: 0.8rem;
+        margin-top: 0.4rem;
+        white-space: pre-line;
     }
     </style>
     """,
     unsafe_allow_html=True,
 )
 
-# ----------------------------------------------------
-# 1. 파일 경로
-# ----------------------------------------------------
-MERGED_PATH = "merged.xlsx"
-FEEDBACK_PATH = "feedback.csv"
-CONTACT_PATH = "영업구역담당자_251204.xlsx"  # 담당자 연락처 기본 파일명
+# ====================================================
+# 1. 파일 경로 & SMTP 설정
+# ====================================================
+VOC_PATH = "merged.xlsx"
+MANAGER_MAP_PATH = "영업구역담당자_251204.xlsx"
 
-# ----------------------------------------------------
-# 2. 데이터 로딩
-# ----------------------------------------------------
+SMTP_HOST = "smtp.gmail.com"
+SMTP_PORT = 587
+SMTP_USER = "bough38@gmail.com"
+SENDER_NAME = "해지VOC 관리자"
+
+# 비밀번호는 반드시 st.secrets 또는 환경변수에 보관 (코드에 직접 쓰지 말 것!)
+SMTP_PASSWORD = st.secrets.get("SMTP_PASSWORD") or os.getenv("SMTP_PASSWORD", "")
+
+# ====================================================
+# 2. 데이터 로딩 함수
+# ====================================================
 @st.cache_data
 def load_voc_data(path: str) -> pd.DataFrame:
     if not os.path.exists(path):
-        st.error("❌ 'merged.xlsx' 파일이 존재하지 않습니다. 저장소 루트에 있는지 확인해주세요.")
+        st.error(f"❌ '{path}' 파일이 존재하지 않습니다. 저장소 루트 위치를 다시 확인해주세요.")
         return pd.DataFrame()
 
     df = pd.read_excel(path)
@@ -144,88 +156,106 @@ def load_voc_data(path: str) -> pd.DataFrame:
     if "접수일시" in df.columns:
         df["접수일시"] = pd.to_datetime(df["접수일시"], errors="coerce")
 
+    # 지사 축약
+    if "관리지사" in df.columns:
+        df["관리지사"] = df["관리지사"].replace(
+            {
+                "중앙지사": "중앙",
+                "강북지사": "강북",
+                "서대문지사": "서대문",
+                "고양지사": "고양",
+                "의정부지사": "의정부",
+                "남양주지사": "남양주",
+                "강릉지사": "강릉",
+                "원주지사": "원주",
+            }
+        )
+    else:
+        df["관리지사"] = ""
+
+    # 영업구역 / 담당자 통합
+    def make_zone(row):
+        if "영업구역번호" in row and pd.notna(row["영업구역번호"]):
+            return row["영업구역번호"]
+        if "담당상세" in row and pd.notna(row["담당상세"]):
+            return row["담당상세"]
+        if "영업구역정보" in row and pd.notna(row["영업구역정보"]):
+            return row["영업구역정보"]
+        return ""
+
+    df["영업구역_통합"] = df.apply(make_zone, axis=1)
+
+    mgr_priority = ["구역담당자", "담당자", "처리자"]
+
+    def pick_manager(row):
+        for c in mgr_priority:
+            if c in row and pd.notna(row[c]) and str(row[c]).strip() != "":
+                return row[c]
+        return ""
+
+    df["구역담당자_통합"] = df.apply(pick_manager, axis=1)
+
+    # 설치주소 표시용
+    def coalesce_cols(row, candidates):
+        for c in candidates:
+            if c in row.index:
+                val = row[c]
+                if pd.notna(val) and str(val).strip() not in ["", "None", "nan"]:
+                    return val
+        return np.nan
+
+    df["설치주소_표시"] = df.apply(
+        lambda r: coalesce_cols(r, ["시설_설치주소", "설치주소"]),
+        axis=1,
+    )
+
     return df
 
 
-def load_feedback(path: str) -> pd.DataFrame:
-    if os.path.exists(path):
-        try:
-            fb = pd.read_csv(path, encoding="utf-8-sig")
-        except Exception:
-            fb = pd.read_csv(path)
-    else:
-        fb = pd.DataFrame(
-            columns=["계약번호_정제", "고객대응내용", "등록자", "등록일자", "비고"]
-        )
-    return fb
-
-
-def save_feedback(path: str, fb_df: pd.DataFrame) -> None:
-    fb_df.to_csv(path, index=False, encoding="utf-8-sig")
-
-
-def load_contact(uploaded_file, default_path: str) -> pd.DataFrame:
-    """담당자 연락처 엑셀 로드 (업로드 우선, 없으면 기본 경로) - 캐시 X"""
-    df_c = pd.DataFrame()
-    try:
-        if uploaded_file is not None:
-            df_c = pd.read_excel(uploaded_file)
-        elif os.path.exists(default_path):
-            df_c = pd.read_excel(default_path)
-        else:
-            return df_c
-    except Exception as e:
-        st.error(f"연락처 파일을 읽는 중 오류가 발생했습니다: {e}")
+@st.cache_data
+def load_manager_map(path: str) -> pd.DataFrame:
+    if not os.path.exists(path):
+        st.error(f"❌ 담당자 매핑 파일 '{path}' 이(가) 존재하지 않습니다.")
         return pd.DataFrame()
 
+    df = pd.read_excel(path)
+
+    # 실제 파일 컬럼 기준으로 정리
+    # 예상 컬럼: 처리자1, 담당상세, 소속, 연략처, E-MAIL
     rename_map = {
+        "처리자1": "담당자명",
+        "담당상세": "영업구역번호",
+        "소속": "관리지사",
         "연략처": "연락처",
-        "E-MAIL": "EMAIL",
-        "e-mail": "EMAIL",
-        "이메일": "EMAIL",
-        "처리자": "처리자1",
+        "E-MAIL": "이메일",
     }
-    df_c = df_c.rename(columns=rename_map)
+    for old, new in rename_map.items():
+        if old in df.columns:
+            df.rename(columns={old: new}, inplace=True)
 
-    for col in ["담당상세", "처리자1", "소속", "연락처", "EMAIL", "참조자"]:
-        if col not in df_c.columns:
-            df_c[col] = np.nan
+    # 필수 컬럼 체크
+    for c in ["담당자명", "이메일"]:
+        if c not in df.columns:
+            st.error(f"❌ 담당자 매핑 파일에 '{c}' 컬럼이 없습니다. 엑셀 헤더를 확인해주세요.")
+            return pd.DataFrame()
 
-    for col in ["담당상세", "처리자1", "소속", "연락처", "EMAIL", "참조자"]:
-        df_c[col] = df_c[col].astype(str).str.strip()
+    # 이메일/담당자명 공백 제거
+    df["담당자명"] = df["담당자명"].astype(str).str.strip()
+    df["이메일"] = df["이메일"].astype(str).str.strip()
 
-    return df_c
+    df = df[(df["담당자명"] != "") & (df["이메일"] != "")]
+    df = df.drop_duplicates(subset=["담당자명", "이메일"])
+
+    if "관리지사" not in df.columns:
+        df["관리지사"] = ""
+
+    return df
 
 
-# ---------- 실제 로딩 ----------
-df = load_voc_data(MERGED_PATH)
-if df.empty:
-    st.stop()
-
-if "feedback_df" not in st.session_state:
-    st.session_state["feedback_df"] = load_feedback(FEEDBACK_PATH)
-
-# ----------------------------------------------------
-# 3. 지사명 축약 & 정렬 순서
-# ----------------------------------------------------
-if "관리지사" in df.columns:
-    df["관리지사"] = df["관리지사"].replace(
-        {
-            "중앙지사": "중앙",
-            "강북지사": "강북",
-            "서대문지사": "서대문",
-            "고양지사": "고양",
-            "의정부지사": "의정부",
-            "남양주지사": "남양주",
-            "강릉지사": "강릉",
-            "원주지사": "원주",
-        }
-    )
-else:
-    df["관리지사"] = ""
-
+# ====================================================
+# 3. VOC 데이터 가공 (해지VOC + 비매칭)
+# ====================================================
 BRANCH_ORDER = ["중앙", "강북", "서대문", "고양", "의정부", "남양주", "강릉", "원주"]
-
 
 def sort_branch(series):
     return sorted(
@@ -233,1459 +263,460 @@ def sort_branch(series):
         key=lambda x: BRANCH_ORDER.index(x),
     )
 
-# ----------------------------------------------------
-# 4. 영업구역 / 담당자 통합
-# ----------------------------------------------------
-def make_zone(row):
-    if "영업구역번호" in row and pd.notna(row["영업구역번호"]):
-        return row["영업구역번호"]
-    if "담당상세" in row and pd.notna(row["담당상세"]):
-        return row["담당상세"]
-    if "영업구역정보" in row and pd.notna(row["영업구역정보"]):
-        return row["영업구역정보"]
-    return ""
 
+@st.cache_data
+def prepare_voc(df: pd.DataFrame):
+    if df.empty:
+        return pd.DataFrame(), pd.DataFrame()
 
-df["영업구역_통합"] = df.apply(make_zone, axis=1)
+    df_voc = df[df.get("출처") == "해지VOC"].copy()
+    df_other = df[df.get("출처") != "해지VOC"].copy()
 
-mgr_priority = ["구역담당자", "담당자", "처리자"]
+    other_sets = {
+        src: set(df_other[df_other["출처"] == src]["계약번호_정제"].dropna())
+        for src in ["해지시설", "해지요청", "설변", "정지", "해지파이프라인"]
+        if "출처" in df_other.columns
+    }
+    other_union = set().union(*other_sets.values()) if other_sets else set()
 
+    df_voc["매칭여부"] = df_voc["계약번호_정제"].apply(
+        lambda x: "매칭(O)" if x in other_union else "비매칭(X)"
+    )
 
-def pick_manager(row):
-    for c in mgr_priority:
-        if c in row and pd.notna(row[c]) and str(row[c]).strip() != "":
-            return row[c]
-    return ""
+    # 리스크 계산
+    today = date.today()
 
-
-df["구역담당자_통합"] = df.apply(pick_manager, axis=1)
-
-address_cols = [c for c in df.columns if "주소" in str(c)]
-
-# ----------------------------------------------------
-# 5. 출처 분리 + 매칭여부
-# ----------------------------------------------------
-df_voc = df[df.get("출처") == "해지VOC"].copy()
-df_other = df[df.get("출처") != "해지VOC"].copy()
-
-other_sets = {
-    src: set(df_other[df_other["출처"] == src]["계약번호_정제"].dropna())
-    for src in ["해지시설", "해지요청", "설변", "정지", "해지파이프라인"]
-    if "출처" in df_other.columns
-}
-other_union = set().union(*other_sets.values()) if other_sets else set()
-
-df_voc["매칭여부"] = df_voc["계약번호_정제"].apply(
-    lambda x: "매칭(O)" if x in other_union else "비매칭(X)"
-)
-
-# ----------------------------------------------------
-# 6. 설치주소 / 월정료
-# ----------------------------------------------------
-def coalesce_cols(row, candidates):
-    for c in candidates:
-        if c in row.index:
-            val = row[c]
-            if pd.notna(val) and str(val).strip() not in ["", "None", "nan"]:
-                return val
-    return np.nan
-
-
-df_voc["설치주소_표시"] = df_voc.apply(
-    lambda r: coalesce_cols(r, ["시설_설치주소", "설치주소"]),
-    axis=1,
-)
-
-fee_raw_col = None
-if "시설_KTT월정료(조정)" in df_voc.columns:
-    fee_raw_col = "시설_KTT월정료(조정)"
-elif "KTT월정료(조정)" in df_voc.columns:
-    fee_raw_col = "KTT월정료(조정)"
-
-
-def parse_fee(x: object) -> float:
-    if pd.isna(x):
-        return np.nan
-    s = str(x).strip()
-    if s == "" or s.lower() in ["nan", "none"]:
-        return np.nan
-    s = s.replace(",", "")
-    digits = "".join(ch for ch in s if (ch.isdigit() or ch == "."))
-    if digits == "":
-        return np.nan
-    try:
-        v = float(digits)
-    except Exception:
-        return np.nan
-    if v >= 200000:
-        v = v / 10.0
-    return v
-
-
-if fee_raw_col is not None:
-    df_voc["월정료_수치"] = df_voc[fee_raw_col].apply(parse_fee)
-
-    def format_fee(v):
-        if pd.isna(v):
-            return ""
-        return f"{int(round(v, 0)):,}"
-
-    df_voc[fee_raw_col] = df_voc["월정료_수치"].apply(format_fee)
-
-    def fee_band(v):
-        if pd.isna(v):
-            return "미기재"
-        if v >= 100000:
-            return "10만 이상"
-        return "10만 미만"
-
-    df_voc["월정료구간"] = df_voc["월정료_수치"].apply(fee_band)
-else:
-    df_voc["월정료_수치"] = np.nan
-    df_voc["월정료구간"] = "미기재"
-
-# ----------------------------------------------------
-# 7. 리스크 등급/경과일
-# ----------------------------------------------------
-today = date.today()
-
-
-def compute_risk(row):
-    dt = row.get("접수일시")
-    if pd.isna(dt):
-        return np.nan, "LOW"
-
-    if not isinstance(dt, (pd.Timestamp, datetime)):
-        try:
-            dt = pd.to_datetime(dt, errors="coerce")
-        except Exception:
+    def compute_risk(row):
+        dt = row.get("접수일시")
+        if pd.isna(dt):
+            return np.nan, "LOW"
+        if not isinstance(dt, (pd.Timestamp, datetime)):
+            try:
+                dt = pd.to_datetime(dt, errors="coerce")
+            except Exception:
+                return np.nan, "LOW"
+        if pd.isna(dt):
             return np.nan, "LOW"
 
-    if pd.isna(dt):
-        return np.nan, "LOW"
-
-    days = (today - dt.date()).days
-
-    if days <= 3:
-        level = "HIGH"
-    elif days <= 10:
-        level = "MEDIUM"
-    else:
-        level = "LOW"
-    return days, level
-
-
-df_voc["경과일수"], df_voc["리스크등급"] = zip(
-    *df_voc.apply(lambda r: compute_risk(r), axis=1)
-)
-
-df_unmatched = df_voc[df_voc["매칭여부"] == "비매칭(X)"].copy()
-
-# ----------------------------------------------------
-# 8. 표시 컬럼 정의
-# ----------------------------------------------------
-fixed_order = [
-    "상호",
-    "계약번호_정제",
-    "매칭여부",
-    "리스크등급",
-    "경과일수",
-    "출처",
-    "관리지사",
-    "영업구역번호",
-    "영업구역_통합",
-    "구역담당자_통합",
-    "처리자",
-    "담당유형",
-    "처리유형",
-    "처리내용",
-    "접수일시",
-    "서비스개시일",
-    "계약종료일",
-    "서비스중",
-    "서비스소",
-    "VOC유형",
-    "VOC유형중",
-    "VOC유형소",
-    "해지상세",
-    "등록내용",
-    "설치주소_표시",
-    "시설_KTT월정료(조정)",
-    "계약상태(중)",
-    "서비스(소)",
-]
-display_cols_raw = [c for c in fixed_order if c in df_voc.columns]
-
-
-def filter_valid_columns(cols, df_base):
-    valid_cols = []
-    for c in cols:
-        series = df_base[c]
-        mask_valid = series.notna() & ~series.astype(str).str.strip().isin(
-            ["", "None", "nan"]
-        )
-        if mask_valid.any():
-            valid_cols.append(c)
-    return valid_cols
-
-
-display_cols = filter_valid_columns(display_cols_raw, df_voc)
-
-# ----------------------------------------------------
-# 9. 스타일링
-# ----------------------------------------------------
-def style_risk(df_view: pd.DataFrame):
-    if "리스크등급" not in df_view.columns:
-        return df_view
-
-    def _row_style(row):
-        level = row.get("리스크등급", "")
-        if level == "HIGH":
-            bg = "#fee2e2"
-        elif level == "MEDIUM":
-            bg = "#fef3c7"
+        days = (today - dt.date()).days
+        if days <= 3:
+            level = "HIGH"
+        elif days <= 10:
+            level = "MEDIUM"
         else:
-            bg = "#e0f2fe"
-        return [f"background-color: {bg};"] * len(row)
+            level = "LOW"
+        return days, level
 
-    return df_view.style.apply(_row_style, axis=1)
-
-
-# ----------------------------------------------------
-# 10. 사이드바 글로벌 필터 & 연락처 업로드
-# ----------------------------------------------------
-st.sidebar.title("🔧 글로벌 필터")
-
-if "접수일시" in df_voc.columns and df_voc["접수일시"].notna().any():
-    min_d = df_voc["접수일시"].min().date()
-    max_d = df_voc["접수일시"].max().date()
-    dr = st.sidebar.date_input(
-        "접수일자 범위",
-        value=(min_d, max_d),
-        min_value=min_d,
-        max_value=max_d,
-        key="global_date_range",
+    df_voc["경과일수"], df_voc["리스크등급"] = zip(
+        *df_voc.apply(lambda r: compute_risk(r), axis=1)
     )
-else:
-    dr = None
 
-branches_all = sort_branch(df_voc["관리지사"].dropna().unique())
-sel_branches = st.sidebar.multiselect(
-    "관리지사(복수 선택)",
-    options=branches_all,
-    default=branches_all,
-    key="global_branches",
+    unmatched = df_voc[df_voc["매칭여부"] == "비매칭(X)"].copy()
+
+    return df_voc, unmatched
+
+
+# ====================================================
+# 4. 이메일 발송 함수
+# ====================================================
+def send_email(to_addrs, subject: str, body: str):
+    if not SMTP_PASSWORD:
+        st.error("❌ SMTP 비밀번호가 설정되어 있지 않습니다. st.secrets['SMTP_PASSWORD'] 또는 환경변수에 등록해주세요.")
+        return False
+
+    if isinstance(to_addrs, str):
+        to_addrs = [to_addrs]
+
+    msg = EmailMessage()
+    msg["Subject"] = subject
+    msg["From"] = f"{SENDER_NAME} <{SMTP_USER}>"
+    msg["To"] = ", ".join([a for a in to_addrs if a])
+
+    msg.set_content(body)
+
+    try:
+        with smtplib.SMTP(SMTP_HOST, SMTP_PORT) as server:
+            server.starttls()
+            server.login(SMTP_USER, SMTP_PASSWORD)
+            server.send_message(msg)
+        return True
+    except Exception as e:
+        st.error(f"❌ 메일 발송 중 오류가 발생했습니다: {e}")
+        return False
+
+
+# 템플릿 생성
+def build_template(template_type: str,
+                   branch: str,
+                   base_manager: str,
+                   num_targets: int,
+                   recent_days: int = 7) -> tuple[str, str]:
+    """템플릿 유형에 따른 제목/본문 생성"""
+    base_title = f"[해지VOC] 중점 해지방어 활동시설 안내 - {branch} / {base_manager}"
+    summary_line = f"- 기준 담당자: {base_manager}\n- 지사: {branch}\n- 대상 시설 수: {num_targets}건\n- 기준: 최근 {recent_days}일 해지VOC 중 비매칭(활동내역 미등록) 시설"
+
+    if template_type == "업무용 요약":
+        subject = base_title
+        body = f"""안녕하세요.
+
+해지VOC 대시보드 기준으로, {branch} 지사 {base_manager} 담당 구역의
+'중점 해지방어 활동시설'(해지VOC 접수 후 활동내역이 확인되지 않은 시설)이 {num_targets}건 조회되었습니다.
+
+{summary_line}
+
+각 시설별 상세 내역은 대시보드 또는 공유된 엑셀 파일을 참고하시고,
+현황 확인 후 활동내역을 등록해 주시기 바랍니다.
+
+감사합니다.
+해지VOC 운영담당 드림
+"""
+    elif template_type == "중점 방어 안내":
+        subject = f"[중점 해지방어] 활동필요 시설 목록 공유 - {branch} / {base_manager}"
+        body = f"""안녕하세요.
+
+해지VOC 분석 결과, 아래 기준에 해당하는
+'중점 해지방어 활동시설'이 {num_targets}건 확인되었습니다.
+
+{summary_line}
+
+▶ 중점 해지방어 활동시설이란?
+해지VOC 접수 후 해지방어 또는 현장 방문 등
+'활동내역이 등록되지 않은 시설'로
+신속한 확인 및 방어활동이 필요한 대상입니다.
+
+불필요 해지가 발생하지 않도록,
+해당 시설 우선 확인 및 활동내역 등록을 요청드립니다.
+
+감사합니다.
+해지VOC 운영담당 드림
+"""
+    else:  # 긴급 재확인 요청
+        subject = f"[긴급] 해지방어 활동 미등록 시설 재확인 요청 - {branch} / {base_manager}"
+        body = f"""[긴급 안내]
+
+최근 {recent_days}일 이내 접수된 해지VOC 중,
+해지방어 활동내역이 등록되지 않은 시설이 {num_targets}건 확인되었습니다.
+
+{summary_line}
+
+특히, 장기간 방치 시 불필요 해지로 연결될 가능성이 있어
+지사 차원의 신속한 확인 및 조치가 필요합니다.
+
+가능하신 한 빠른 시일 내에
+- 고객 통화 / 방문 여부
+- 해지방어 결과
+- 후속 조치 계획
+
+등을 확인 후, 대시보드 또는 내부 시스템에
+활동내역을 등록해 주시기 바랍니다.
+
+감사합니다.
+해지VOC 운영담당 드림
+"""
+    return subject, body
+
+
+# ====================================================
+# 5. 메인 로직
+# ====================================================
+st.title("📧 해지VOC 담당자 안내 & 알림 발송")
+
+st.caption(
+    "해지VOC 대시보드 기준으로 **중점 해지방어 활동시설** 현황을 확인하고, "
+    "담당자 또는 대무자에게 이메일로 안내할 수 있는 화면입니다."
 )
 
-risk_all = ["HIGH", "MEDIUM", "LOW"]
-sel_risk = st.sidebar.multiselect(
-    "리스크등급",
-    options=risk_all,
-    default=risk_all,
-    key="global_risk",
-)
+# ---------- 데이터 로딩 ----------
+voc_raw = load_voc_data(VOC_PATH)
+manager_map = load_manager_map(MANAGER_MAP_PATH)
 
-match_all = ["매칭(O)", "비매칭(X)"]
-sel_match = st.sidebar.multiselect(
-    "매칭여부",
-    options=match_all,
-    default=match_all,
-    key="global_match",
-)
+if voc_raw.empty or manager_map.empty:
+    st.stop()
 
-fee_filter_global = st.sidebar.radio(
-    "월정료 구간(글로벌)",
-    options=["전체", "10만 미만", "10만 이상"],
+df_voc, unmatched_global = prepare_voc(voc_raw)
+
+# ====================================================
+# 6. 사이드바: 기준 담당자 선택
+# ====================================================
+st.sidebar.markdown("### 🎯 기준 담당자 선택")
+
+branches_available = sort_branch(manager_map["관리지사"].dropna().unique())
+branch_sel = st.sidebar.selectbox(
+    "관리지사",
+    options=["(전체)"] + branches_available,
     index=0,
-    key="global_fee_band",
 )
 
+if branch_sel == "(전체)":
+    mgr_base_df = manager_map.copy()
+else:
+    mgr_base_df = manager_map[manager_map["관리지사"] == branch_sel]
+
+mgr_names = sorted(mgr_base_df["담당자명"].unique().tolist())
+
+if not mgr_names:
+    st.sidebar.info("선택한 지사에 등록된 담당자가 없습니다.")
+    base_manager_sel = None
+else:
+    base_manager_sel = st.sidebar.selectbox(
+        "기준 담당자 (데이터 기준)",
+        options=mgr_names,
+    )
+
 st.sidebar.markdown("---")
-st.sidebar.subheader("📇 담당자 연락처 파일")
-uploaded_contact = st.sidebar.file_uploader(
-    "영업구역 담당자 연락처 업로드 (.xlsx)",
-    type=["xlsx", "xls"],
-    help="담당상세 / 처리자1 / 소속 / 연락처 / EMAIL 컬럼 포함",
-)
 
-df_contact = load_contact(uploaded_contact, CONTACT_PATH)
-
-if df_contact.empty:
-    st.sidebar.info("연락처 파일이 없으면 알림 템플릿 기능에서 수신자 목록이 제한됩니다.")
-
-st.sidebar.markdown("---")
+st.sidebar.markdown("##### ℹ 중점 해지방어 활동시설 이란?")
 st.sidebar.caption(
-    f"마지막 갱신: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
+    "해지VOC 접수 후 활동내역이 확인되지 않은 시설로, "
+    "신속한 확인과 해지방어 활동이 필요한 대상입니다."
 )
 
-# ----------------------------------------------------
-# 11. 글로벌 필터 적용
-# ----------------------------------------------------
-voc_filtered_global = df_voc.copy()
+# ====================================================
+# 7. 기준 담당자별 대상 데이터 집계
+# ====================================================
+if base_manager_sel is None:
+    st.info("좌측 사이드바에서 기준 지사와 담당자를 먼저 선택해주세요.")
+    st.stop()
 
-if dr and isinstance(dr, tuple) and len(dr) == 2:
-    start_d, end_d = dr
-    if isinstance(start_d, date) and isinstance(end_d, date):
-        voc_filtered_global = voc_filtered_global[
-            (voc_filtered_global["접수일시"] >= pd.to_datetime(start_d))
-            & (
-                voc_filtered_global["접수일시"]
-                < pd.to_datetime(end_d) + pd.Timedelta(days=1)
-            )
-        ]
+# VOC 데이터에서 담당자 기준 필터
+base_voc = unmatched_global.copy()
 
-if sel_branches:
-    voc_filtered_global = voc_filtered_global[
-        voc_filtered_global["관리지사"].isin(sel_branches)
-    ]
+if branch_sel != "(전체)":
+    base_voc = base_voc[base_voc["관리지사"] == branch_sel]
 
-if sel_risk:
-    voc_filtered_global = voc_filtered_global[
-        voc_filtered_global["리스크등급"].isin(sel_risk)
-    ]
+# '구역담당자_통합' 이 기준 담당자 이름과 같은 건들
+base_voc = base_voc[
+    base_voc["구역담당자_통합"].astype(str).str.strip() == base_manager_sel
+]
 
-if sel_match:
-    voc_filtered_global = voc_filtered_global[
-        voc_filtered_global["매칭여부"].isin(sel_match)
-    ]
+# 최근 N일 기준 (예: 30일)
+RECENT_DAYS = 30
+if "접수일시" in base_voc.columns and base_voc["접수일시"].notna().any():
+    cutoff_date = pd.Timestamp.today().normalize() - pd.Timedelta(days=RECENT_DAYS)
+    recent_voc = base_voc[base_voc["접수일시"] >= cutoff_date]
+else:
+    recent_voc = base_voc.copy()
 
-if fee_filter_global != "전체":
-    if fee_filter_global == "10만 이상":
-        voc_filtered_global = voc_filtered_global[
-            voc_filtered_global["월정료_수치"] >= 100000
-        ]
-    elif fee_filter_global == "10만 미만":
-        voc_filtered_global = voc_filtered_global[
-            (voc_filtered_global["월정료_수치"] < 100000)
-            & voc_filtered_global["월정료_수치"].notna()
-        ]
+num_total_targets = base_voc["계약번호_정제"].nunique()
+num_recent_targets = recent_voc["계약번호_정제"].nunique()
 
-unmatched_global = voc_filtered_global[
-    voc_filtered_global["매칭여부"] == "비매칭(X)"
-].copy()
+# ====================================================
+# 8. 상단 요약 (기준 담당자 기준)
+# ====================================================
+top_col1, top_col2, top_col3, top_col4 = st.columns(4)
 
-# ----------------------------------------------------
-# 12. 상단 KPI
-# ----------------------------------------------------
-st.markdown("## 📊 해지 VOC 종합 대시보드")
-
-total_voc_rows = len(voc_filtered_global)
-unique_contracts = voc_filtered_global["계약번호_정제"].nunique()
-unmatched_contracts = (
-    voc_filtered_global[voc_filtered_global["매칭여부"] == "비매칭(X)"]["계약번호_정제"]
-    .nunique()
+top_col1.metric(
+    "기준 지사",
+    branch_sel if branch_sel != "(전체)" else "전체",
 )
-matched_contracts = (
-    voc_filtered_global[voc_filtered_global["매칭여부"] == "매칭(O)"]["계약번호_정제"]
-    .nunique()
+top_col2.metric(
+    "기준 담당자",
+    base_manager_sel,
 )
-
-k1, k2, k3, k4 = st.columns(4)
-k1.metric("VOC 접수건수(행)", f"{total_voc_rows:,}")
-k2.metric("VOC 계약 수(유니크)", f"{unique_contracts:,}")
-k3.metric("비매칭(X) 계약 수", f"{unmatched_contracts:,}")
-k4.metric("매칭(O) 계약 수", f"{matched_contracts:,}")
+top_col3.metric(
+    "중점 해지방어 활동시설 (전체)",
+    f"{num_total_targets:,} 건",
+)
+top_col4.metric(
+    f"중점 해지방어 활동시설 (최근 {RECENT_DAYS}일)",
+    f"{num_recent_targets:,} 건",
+)
 
 st.markdown("---")
 
-# ----------------------------------------------------
-# 13. 탭 구성 (6개)
-# ----------------------------------------------------
-tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs(
-    [
-        "📘 VOC 전체(계약 기준)",
-        "🚨 비매칭(활동대상)",
-        "📊 지사/담당자 현황",
-        "🔍 계약별 드릴다운",
-        "🎯 비매칭 활동대상 정밀 필터(VOC유형소)",
-        "📨 담당자 알림(베타)",
-    ]
+# ====================================================
+# 9. 대상 리스트 & 간단 시각화
+# ====================================================
+st.markdown(
+    '<div class="section-card"><div class="section-title">📊 기준 담당자별 중점 해지방어 활동시설 현황</div>',
+    unsafe_allow_html=True,
 )
 
-# ====================================================
-# TAB 1 — VOC 전체
-# ====================================================
-with tab1:
-    st.subheader("📘 VOC 전체 (계약번호 기준 요약)")
+if base_voc.empty:
+    st.info("현재 기준 조건에 해당하는 '중점 해지방어 활동시설'이 없습니다.")
+else:
+    # 계약번호 기준 요약 (최신 VOC만)
+    temp_sorted = base_voc.sort_values("접수일시", ascending=False)
+    grp = temp_sorted.groupby("계약번호_정제")
+    idx_latest = grp["접수일시"].idxmax()
+    df_summary = temp_sorted.loc[idx_latest].copy()
+    df_summary["접수건수"] = grp.size().reindex(df_summary["계약번호_정제"]).values
 
-    row1_col1, row1_col2 = st.columns([2, 3])
+    list_cols = [
+        "계약번호_정제",
+        "상호",
+        "관리지사",
+        "구역담당자_통합",
+        "리스크등급",
+        "경과일수",
+        "설치주소_표시",
+        "접수건수",
+        "VOC유형소",
+    ]
+    list_cols = [c for c in list_cols if c in df_summary.columns]
 
-    branches_for_tab1 = ["전체"] + sort_branch(
-        voc_filtered_global["관리지사"].dropna().unique()
-    )
-    selected_branch_tab1 = row1_col1.radio(
-        "지사 선택",
-        options=branches_for_tab1,
-        horizontal=True,
-        key="tab1_branch_radio",
-    )
+    sub1, sub2 = st.columns([3, 2])
 
-    temp_for_mgr = voc_filtered_global.copy()
-    if selected_branch_tab1 != "전체":
-        temp_for_mgr = temp_for_mgr[
-            temp_for_mgr["관리지사"] == selected_branch_tab1
-        ]
-
-    mgr_options_tab1 = (
-        ["전체"]
-        + sorted(
-            temp_for_mgr["구역담당자_통합"]
-            .dropna()
-            .astype(str)
-            .unique()
-            .tolist()
-        )
-        if "구역담당자_통합" in temp_for_mgr.columns
-        else ["전체"]
-    )
-
-    selected_mgr_tab1 = row1_col2.radio(
-        "담당자 선택",
-        options=mgr_options_tab1,
-        horizontal=True,
-        key="tab1_mgr_radio",
-    )
-
-    s1, s2, s3 = st.columns(3)
-    q_cn = s1.text_input("계약번호 검색(부분)", key="tab1_cn")
-    q_name = s2.text_input("상호 검색(부분)", key="tab1_name")
-    q_addr = s3.text_input("주소 검색(부분)", key="tab1_addr")
-
-    temp = voc_filtered_global.copy()
-
-    if selected_branch_tab1 != "전체":
-        temp = temp[temp["관리지사"] == selected_branch_tab1]
-    if selected_mgr_tab1 != "전체":
-        temp = temp[temp["구역담당자_통합"].astype(str) == selected_mgr_tab1]
-
-    if q_cn:
-        temp = temp[
-            temp["계약번호_정제"].astype(str).str.contains(q_cn.strip())
-        ]
-    if q_name and "상호" in temp.columns:
-        temp = temp[
-            temp["상호"].astype(str).str.contains(q_name.strip())
-        ]
-    if q_addr:
-        cond = False
-        if "설치주소_표시" in temp.columns:
-            cond = temp["설치주소_표시"].astype(str).str.contains(q_addr.strip())
-        else:
-            for col in address_cols:
-                if col in temp.columns:
-                    cond |= temp[col].astype(str).str.contains(q_addr.strip())
-        temp = temp[cond]
-
-    if temp.empty:
-        st.info("조건에 맞는 VOC 데이터가 없습니다.")
-    else:
-        temp_sorted = temp.sort_values("접수일시", ascending=False)
-        grp = temp_sorted.groupby("계약번호_정제")
-        idx_latest = grp["접수일시"].idxmax()
-        df_summary = temp_sorted.loc[idx_latest].copy()
-        df_summary["접수건수"] = grp.size().reindex(df_summary["계약번호_정제"]).values
-
-        summary_cols = [
-            "계약번호_정제",
-            "상호",
-            "관리지사",
-            "구역담당자_통합",
-            "리스크등급",
-            "경과일수",
-            "매칭여부",
-            "접수건수",
-            "설치주소_표시",
-            fee_raw_col if fee_raw_col is not None else None,
-            "계약상태(중)",
-            "서비스(소)",
-        ]
-        summary_cols = [c for c in summary_cols if c and c in df_summary.columns]
-        summary_cols = filter_valid_columns(summary_cols, df_summary)
-
-        st.markdown(f"📌 표시 계약 수: **{len(df_summary):,} 건**")
+    with sub1:
+        st.markdown("##### 📋 대상 시설 목록 (계약번호 기준, 최신 VOC 1건)")
         st.dataframe(
-            style_risk(df_summary[summary_cols]),
+            df_summary[list_cols].sort_values("경과일수", ascending=False),
             use_container_width=True,
-            height=480,
+            height=360,
         )
 
-# ====================================================
-# TAB 2 — 비매칭(X) 활동대상
-# ====================================================
-with tab2:
-    st.subheader("🚨 비매칭(X) 활동대상 (계약번호 기준)")
+    with sub2:
+        st.markdown("##### ⏱ 리스크/경과일 분포")
 
-    if unmatched_global.empty:
-        st.info("현재 글로벌 필터 조건에서 비매칭(X) 계약이 없습니다.")
-    else:
-        u_col1, u_col2 = st.columns([2, 3])
-
-        branches_u = ["전체"] + sort_branch(
-            unmatched_global["관리지사"].dropna().unique()
-        )
-        selected_branch_u = u_col1.radio(
-            "지사 선택",
-            options=branches_u,
-            horizontal=True,
-            key="tab2_branch_radio",
-        )
-
-        temp_u_for_mgr = unmatched_global.copy()
-        if selected_branch_u != "전체":
-            temp_u_for_mgr = temp_u_for_mgr[
-                temp_u_for_mgr["관리지사"] == selected_branch_u
-            ]
-
-        mgr_options_u = (
-            ["전체"]
-            + sorted(
-                temp_u_for_mgr["구역담당자_통합"]
-                .dropna()
-                .astype(str)
-                .unique()
-                .tolist()
-            )
-            if "구역담당자_통합" in temp_u_for_mgr.columns
-            else ["전체"]
-        )
-
-        selected_mgr_u = u_col2.radio(
-            "담당자 선택",
-            options=mgr_options_u,
-            horizontal=True,
-            key="tab2_mgr_radio",
-        )
-
-        us1, us2 = st.columns(2)
-        uq_cn = us1.text_input("계약번호 검색(부분)", key="tab2_cn")
-        uq_name = us2.text_input("상호 검색(부분)", key="tab2_name")
-
-        temp_u = unmatched_global.copy()
-        if selected_branch_u != "전체":
-            temp_u = temp_u[temp_u["관리지사"] == selected_branch_u]
-        if selected_mgr_u != "전체":
-            temp_u = temp_u[temp_u["구역담당자_통합"].astype(str) == selected_mgr_u]
-
-        if uq_cn:
-            temp_u = temp_u[
-                temp_u["계약번호_정제"].astype(str).str.contains(uq_cn.strip())
-            ]
-        if uq_name and "상호" in temp_u.columns:
-            temp_u = temp_u[
-                temp_u["상호"].astype(str).str.contains(uq_name.strip())
-            ]
-
-        if temp_u.empty:
-            st.info("조건에 맞는 비매칭(X) 계약이 없습니다.")
-        else:
-            temp_u_sorted = temp_u.sort_values("접수일시", ascending=False)
-            grp_u = temp_u_sorted.groupby("계약번호_정제")
-            idx_latest_u = grp_u["접수일시"].idxmax()
-            df_u_summary = temp_u_sorted.loc[idx_latest_u].copy()
-            df_u_summary["접수건수"] = grp_u.size().reindex(
-                df_u_summary["계약번호_정제"]
-            ).values
-
-            summary_cols_u = [
-                "계약번호_정제",
-                "상호",
-                "관리지사",
-                "구역담당자_통합",
-                "리스크등급",
-                "경과일수",
-                "접수건수",
-                "설치주소_표시",
-                fee_raw_col if fee_raw_col is not None else None,
-                "계약상태(중)",
-                "서비스(소)",
-            ]
-            summary_cols_u = [
-                c for c in summary_cols_u if c and c in df_u_summary.columns
-            ]
-            summary_cols_u = filter_valid_columns(summary_cols_u, df_u_summary)
-
-            st.markdown(
-                f"⚠ 활동대상 비매칭(X) 계약 수: **{len(df_u_summary):,} 건**"
-            )
-
-            st.data_editor(
-                df_u_summary[summary_cols_u].reset_index(drop=True),
-                use_container_width=True,
-                height=420,
-                hide_index=True,
-                key="tab2_unmatched_editor",
-            )
-
-            selected_idx = None
-            state = st.session_state.get("tab2_unmatched_editor", {})
-            selected_rows = []
-            if isinstance(state, dict):
-                if "selected_rows" in state and state["selected_rows"]:
-                    selected_rows = state["selected_rows"]
-                elif "selection" in state and isinstance(
-                    state["selection"], dict
-                ):
-                    rows_sel = state["selection"].get("rows")
-                    if rows_sel:
-                        selected_rows = rows_sel
-            if selected_rows:
-                selected_idx = selected_rows[0]
-
-            u_contract_list = df_u_summary["계약번호_정제"].astype(str).tolist()
-            default_index = 0
-            if selected_idx is not None and 0 <= selected_idx < len(
-                u_contract_list
-            ):
-                default_index = selected_idx + 1
-
-            st.markdown("### 📂 선택한 계약번호 상세 VOC 이력")
-            sel_u_contract = st.selectbox(
-                "상세 VOC 이력을 볼 계약 선택 (표 행을 클릭하면 자동 선택됩니다)",
-                options=["(선택)"] + u_contract_list,
-                index=default_index,
-                key="tab2_select_contract",
-            )
-
-            if sel_u_contract != "(선택)":
-                voc_detail = temp_u[
-                    temp_u["계약번호_정제"].astype(str) == sel_u_contract
-                ].copy()
-                voc_detail = voc_detail.sort_values("접수일시", ascending=False)
-
-                st.markdown(
-                    f"#### 🔍 `{sel_u_contract}` VOC 상세 이력 ({len(voc_detail)}건)"
-                )
-                st.dataframe(
-                    style_risk(voc_detail[display_cols]),
-                    use_container_width=True,
-                    height=350,
-                )
-
-            st.download_button(
-                "📥 비매칭(X) 원천 VOC 행 기준 다운로드 (CSV)",
-                temp_u.to_csv(index=False).encode("utf-8-sig"),
-                file_name="비매칭_활동대상_원천행.csv",
-                mime="text/csv",
-            )
-
-# ====================================================
-# TAB 3 — 지사/담당자 시각화
-# ====================================================
-with tab3:
-    st.subheader("📊 지사 / 담당자별 비매칭 리스크 현황")
-
-    if unmatched_global.empty:
-        st.info("비매칭(X) 데이터가 없습니다.")
-    else:
-        c1, c2, c3 = st.columns(3)
-
-        bc = (
-            unmatched_global.groupby("관리지사")["계약번호_정제"]
-            .nunique()
-            .rename("비매칭계약수")
-        )
-        bc = bc[bc.index.isin(BRANCH_ORDER)].reindex(BRANCH_ORDER).dropna()
-
-        with c1:
-            st.markdown("#### 🏢 지사별 비매칭 계약 수 (유니크 계약)")
-            st.bar_chart(bc, use_container_width=True)
-
-        mc = (
-            unmatched_global.groupby("구역담당자_통합")["계약번호_정제"]
-            .nunique()
-            .rename("비매칭계약수")
-            .sort_values(ascending=False)
-        )
-        mc = mc[mc.index.astype(str).str.strip() != ""].head(15)
-
-        with c2:
-            st.markdown("#### 👤 담당자별 비매칭 TOP 15 (유니크 계약)")
-            st.bar_chart(mc, use_container_width=True)
-
-        rc = (
-            unmatched_global["리스크등급"]
+        # 리스크 분포
+        risk_counts = (
+            df_summary["리스크등급"]
             .value_counts()
             .reindex(["HIGH", "MEDIUM", "LOW"])
             .fillna(0)
         )
+        st.bar_chart(risk_counts)
 
-        with c3:
-            st.markdown("#### 🔥 리스크 등급 분포 (비매칭, 계약 단위)")
-            st.bar_chart(rc, use_container_width=True)
-
-        st.markdown("---")
-
-        if "접수일시" in unmatched_global.columns:
-            trend = (
-                unmatched_global.assign(접수일=unmatched_global["접수일시"].dt.date)
-                .groupby("접수일")["계약번호_정제"]
-                .nunique()
-                .rename("비매칭계약수")
-                .sort_index()
-            )
-            st.markdown("#### 📈 일별 비매칭 계약 추이 (유니크 계약)")
-            st.line_chart(trend, use_container_width=True)
-
-# ====================================================
-# TAB 4 — 계약별 드릴다운
-# ====================================================
-with tab4:
-    st.subheader("🔍 계약번호 기준 통합 드릴다운")
-
-    base_all = voc_filtered_global.copy()
-
-    match_choice = st.radio(
-        "매칭여부 선택",
-        options=["전체", "매칭(O)", "비매칭(X)"],
-        horizontal=True,
-        key="tab4_match_radio",
-    )
-
-    drill_base = base_all.copy()
-    if match_choice == "매칭(O)":
-        drill_base = drill_base[drill_base["매칭여부"] == "매칭(O)"]
-    elif match_choice == "비매칭(X)":
-        drill_base = drill_base[drill_base["매칭여부"] == "비매칭(X)"]
-
-    d1, d2 = st.columns([2, 3])
-    branches_d = ["전체"] + sort_branch(drill_base["관리지사"].dropna().unique())
-    sel_branch_d = d1.radio(
-        "지사 선택",
-        options=branches_d,
-        horizontal=True,
-        key="tab4_branch_radio",
-    )
-
-    tmp_mgr_d = drill_base.copy()
-    if sel_branch_d != "전체":
-        tmp_mgr_d = tmp_mgr_d[tmp_mgr_d["관리지사"] == sel_branch_d]
-
-    mgr_options_d = (
-        ["전체"]
-        + sorted(
-            tmp_mgr_d["구역담당자_통합"]
-            .dropna()
-            .astype(str)
-            .unique()
-            .tolist()
-        )
-        if "구역담당자_통합" in tmp_mgr_d.columns
-        else ["전체"]
-    )
-
-    sel_mgr_d = d2.radio(
-        "담당자 선택",
-        options=mgr_options_d,
-        horizontal=True,
-        key="tab4_mgr_radio",
-    )
-
-    dd1, dd2 = st.columns(2)
-    dq_cn = dd1.text_input("계약번호 검색(부분)", key="tab4_cn")
-    dq_name = dd2.text_input("상호 검색(부분)", key="tab4_name")
-
-    drill = drill_base.copy()
-    if sel_branch_d != "전체":
-        drill = drill[drill["관리지사"] == sel_branch_d]
-    if sel_mgr_d != "전체":
-        drill = drill[drill["구역담당자_통합"].astype(str) == sel_mgr_d]
-
-    if dq_cn:
-        drill = drill[
-            drill["계약번호_정제"].astype(str).str.contains(dq_cn.strip())
-        ]
-    if dq_name and "상호" in drill.columns:
-        drill = drill[
-            drill["상호"].astype(str).str.contains(dq_name.strip())
-        ]
-
-    if drill.empty:
-        st.info("조건에 맞는 계약이 없습니다. 필터를 조정해보세요.")
-        sel_cn = None
-    else:
-        drill_sorted = drill.sort_values("접수일시", ascending=False)
-        g = drill_sorted.groupby("계약번호_정제")
-        idx_latest_d = g["접수일시"].idxmax()
-        df_d_summary = drill_sorted.loc[idx_latest_d].copy()
-        df_d_summary["접수건수"] = g.size().reindex(
-            df_d_summary["계약번호_정제"]
-        ).values
-
-        sum_cols_d = [
-            "계약번호_정제",
-            "상호",
-            "관리지사",
-            "구역담당자_통합",
-            "리스크등급",
-            "경과일수",
-            "매칭여부",
-            "접수건수",
-            "설치주소_표시",
-            fee_raw_col if fee_raw_col is not None else None,
-            "계약상태(중)",
-            "서비스(소)",
-        ]
-        sum_cols_d = [c for c in sum_cols_d if c and c in df_d_summary.columns]
-        sum_cols_d = filter_valid_columns(sum_cols_d, df_d_summary)
-
-        st.markdown("#### 📋 계약 요약 (최신 VOC 기준, 계약번호당 1행)")
-        st.dataframe(
-            style_risk(df_d_summary[sum_cols_d]),
-            use_container_width=True,
-            height=260,
-        )
-
-        cn_list = df_d_summary["계약번호_정제"].astype(str).tolist()
-
-        def format_cn(cn_value: str) -> str:
-            row = df_d_summary[
-                df_d_summary["계약번호_정제"].astype(str) == str(cn_value)
-            ].iloc[0]
-            name = row.get("상호", "")
-            branch = row.get("관리지사", "")
-            cnt = row.get("접수건수", 0)
-            return f"{cn_value} | {name} | {branch} | 접수 {int(cnt)}건"
-
-        sel_cn = st.selectbox(
-            "상세를 볼 계약 선택",
-            options=cn_list,
-            format_func=format_cn,
-            key="tab4_cn_selectbox",
-        )
-
-        if sel_cn:
-            voc_hist = df_voc[
-                df_voc["계약번호_정제"].astype(str) == str(sel_cn)
-            ].copy()
-            voc_hist = voc_hist.sort_values("접수일시", ascending=False)
-
-            other_hist = df_other[
-                df_other["계약번호_정제"].astype(str) == str(sel_cn)
-            ].copy()
-
-            base_info = voc_hist.iloc[0] if not voc_hist.empty else None
-
-            st.markdown(f"### 🔎 선택된 계약번호: `{sel_cn}`")
-
-            if base_info is not None:
-                info_col1, info_col2, info_col3 = st.columns(3)
-                info_col1.metric("상호", str(base_info.get("상호", "")))
-                info_col2.metric("관리지사", str(base_info.get("관리지사", "")))
-                info_col3.metric(
-                    "구역담당자",
-                    str(
-                        base_info.get(
-                            "구역담당자_통합", base_info.get("처리자", "")
-                        )
-                    ),
+        # 경과일 박스 요약
+        if "경과일수" in df_summary.columns:
+            days_series = df_summary["경과일수"].dropna()
+            if not days_series.empty:
+                st.caption(
+                    f"경과일수(최소/중앙/최대): "
+                    f"{int(days_series.min())}일 / "
+                    f"{int(days_series.median())}일 / "
+                    f"{int(days_series.max())}일"
                 )
-
-                m2_1, m2_2, m2_3 = st.columns(3)
-                m2_1.metric("VOC 접수건수", f"{len(voc_hist):,}건")
-                m2_2.metric("리스크등급", str(base_info.get("리스크등급", "")))
-                m2_3.metric("매칭여부", str(base_info.get("매칭여부", "")))
-
-                st.caption(f"📍 설치주소: {str(base_info.get('설치주소_표시', ''))}")
-                if fee_raw_col is not None:
-                    st.caption(
-                        f"💰 {fee_raw_col}: {str(base_info.get(fee_raw_col, ''))}"
-                    )
-
-            st.markdown("---")
-
-            c_left, c_right = st.columns(2)
-
-            with c_left:
-                st.markdown("#### 📘 VOC 이력 (전체)")
-                if voc_hist.empty:
-                    st.info("VOC 이력이 없습니다.")
-                else:
-                    st.dataframe(
-                        style_risk(voc_hist[display_cols]),
-                        use_container_width=True,
-                        height=320,
-                    )
-
-            with c_right:
-                st.markdown("#### 📂 기타 출처 이력 (해지시설/요청/설변/정지/파이프라인)")
-                if other_hist.empty:
-                    st.info("기타 출처 데이터가 없습니다.")
-                else:
-                    st.dataframe(
-                        other_hist,
-                        use_container_width=True,
-                        height=320,
-                    )
-
-            st.markdown("---")
-
-# ----------------------------------------------------
-# 피드백 이력 & 입력 (sel_cn 기준)
-# ----------------------------------------------------
-st.markdown(
-    '<div class="section-card"><div class="section-title">📝 고객대응 / 현장 처리내역</div>',
-    unsafe_allow_html=True,
-)
-
-if "sel_cn" not in locals() or sel_cn is None:
-    st.info("상단 드릴다운 탭에서 먼저 계약을 선택하면 처리내역을 관리할 수 있습니다.")
-else:
-    st.caption(f"선택된 계약번호: **{sel_cn}** 기준 처리내역 관리")
-
-    fb_all = st.session_state["feedback_df"]
-    fb_sel = fb_all[fb_all["계약번호_정제"].astype(str) == str(sel_cn)].copy()
-    fb_sel = fb_sel.sort_values("등록일자", ascending=False)
-
-    ADMIN_CODE = "1234"
-    admin_pw = st.text_input("관리자 비밀번호 입력 (삭제/수정 시 필요)", type="password")
-    is_admin = admin_pw == ADMIN_CODE
-
-    st.markdown("##### 📄 등록된 처리내역")
-    if fb_sel.empty:
-        st.info("등록된 처리 이력이 없습니다.")
-    else:
-        for idx, row in fb_sel.iterrows():
-            with st.container():
-                st.markdown('<div class="feedback-item">', unsafe_allow_html=True)
-                col1, col2 = st.columns([6, 1])
-
-                with col1:
-                    st.write(f"**내용:** {row['고객대응내용']}")
-                    st.markdown(
-                        f"<div class='feedback-meta'>등록자: {row['등록자']} | 등록일: {row['등록일자']}</div>",
-                        unsafe_allow_html=True,
-                    )
-                    if row.get("비고"):
-                        st.markdown(
-                            f"<div class='feedback-note'>비고: {row['비고']}</div>",
-                            unsafe_allow_html=True,
-                        )
-
-                with col2:
-                    if is_admin:
-                        if st.button("🗑 삭제", key=f"del_{idx}"):
-                            fb_all = fb_all.drop(index=idx)
-                            st.session_state["feedback_df"] = fb_all
-                            save_feedback(FEEDBACK_PATH, fb_all)
-                            st.success("삭제되었습니다.")
-                            st.rerun()
-                    else:
-                        st.write("🔒")
-                st.markdown("</div>", unsafe_allow_html=True)
-
-    if is_admin and not fb_sel.empty:
-        st.markdown("##### ✏️ 기존 처리내용 수정")
-
-        edit_options = [
-            f"{row['등록일자']} — {str(row['고객대응내용'])[:15]}..."
-            for _, row in fb_sel.iterrows()
-        ]
-        sel_edit = st.selectbox("수정할 항목 선택", ["(선택)"] + edit_options)
-
-        if sel_edit != "(선택)":
-            edit_idx = fb_sel.index[edit_options.index(sel_edit)]
-            original = fb_sel.loc[edit_idx]
-
-            new_text = st.text_area("처리내용 수정", value=str(original["고객대응내용"]))
-            new_note = st.text_input("비고 수정", value=str(original.get("비고", "")))
-
-            if st.button("💾 수정 저장", key="edit_save"):
-                st.session_state["feedback_df"].loc[edit_idx, "고객대응내용"] = new_text
-                st.session_state["feedback_df"].loc[edit_idx, "비고"] = new_note
-                save_feedback(FEEDBACK_PATH, st.session_state["feedback_df"])
-                st.success("수정되었습니다.")
-                st.rerun()
-
-    st.markdown("##### ➕ 새 처리내용 등록")
-
-    c1_fb, c2_fb = st.columns([3, 1])
-    new_fb = c1_fb.text_area("고객대응 / 현장 처리내용", key="new_fb_text")
-    new_user = c2_fb.text_input("등록자", key="new_fb_user")
-    new_note = c2_fb.text_input("비고", key="new_fb_note")
-
-    if st.button("💾 새 처리내역 저장", key="new_fb_save"):
-        if not new_fb.strip():
-            st.warning("처리내용을 입력하세요.")
-        elif not new_user.strip():
-            st.warning("등록자를 입력하세요.")
-        else:
-            new_row = pd.DataFrame(
-                [
-                    {
-                        "계약번호_정제": sel_cn,
-                        "고객대응내용": new_fb.strip(),
-                        "등록자": new_user.strip(),
-                        "등록일자": datetime.now().strftime(
-                            "%Y-%m-%d %H:%M:%S"
-                        ),
-                        "비고": new_note.strip(),
-                    }
-                ]
-            )
-
-            st.session_state["feedback_df"] = pd.concat(
-                [st.session_state["feedback_df"], new_row],
-                ignore_index=True,
-            )
-            save_feedback(FEEDBACK_PATH, st.session_state["feedback_df"])
-            st.success("등록되었습니다.")
-            st.rerun()
 
 st.markdown("</div>", unsafe_allow_html=True)
 
 # ====================================================
-# TAB 5 — 비매칭 활동대상 정밀 필터
+# 10. 수신자 선택 & 메일 템플릿
 # ====================================================
-with tab5:
-    st.subheader("🎯 비매칭 활동대상 — VOC유형소 / 설치주소 / 월정료 기반 고급 필터")
+st.markdown(
+    '<div class="section-card"><div class="section-title">✉ 알림 수신자 선택 & 메일 작성</div>',
+    unsafe_allow_html=True,
+)
 
-    df_u = unmatched_global.copy()
+# 1) 수신자 선택
+col_rcv1, col_rcv2 = st.columns(2)
 
-    if df_u.empty:
-        st.info("비매칭(X) 데이터가 없습니다.")
+with col_rcv1:
+    st.markdown("##### 1) 수신자 선택")
+
+    all_manager_names = sorted(manager_map["담당자명"].unique().tolist())
+    default_receiver = base_manager_sel if base_manager_sel in all_manager_names else all_manager_names[0]
+
+    receiver_name = st.selectbox(
+        "알림을 보낼 담당자/대무자 선택",
+        options=all_manager_names,
+        index=all_manager_names.index(default_receiver),
+        help="기본값은 기준 담당자입니다. 필요 시 대무자 등 다른 담당자를 선택할 수 있습니다.",
+    )
+
+    # 선택된 사람의 이메일
+    receiver_email = ""
+    row_match = manager_map[manager_map["담당자명"] == receiver_name]
+    if not row_match.empty:
+        receiver_email = row_match.iloc[0]["이메일"]
+
+    if receiver_email:
+        st.caption(f"📮 받는 이메일: **{receiver_email}**")
     else:
-        f1, f2, f3 = st.columns([2, 2, 3])
+        st.error("선택한 담당자의 이메일 주소를 찾을 수 없습니다. 매핑 엑셀을 확인해주세요.")
 
-        branches_5 = ["전체"] + sort_branch(df_u["관리지사"].dropna().unique())
-        sel_branch_5 = f1.radio(
-            "지사 선택",
-            options=branches_5,
-            horizontal=True,
-            key="tab5_branch_radio",
-        )
+with col_rcv2:
+    st.markdown("##### 2) 알림 템플릿 선택")
+    template_type = st.radio(
+        "템플릿 유형",
+        options=["업무용 요약", "중점 방어 안내", "긴급 재확인 요청"],
+        horizontal=False,
+    )
+    st.caption(
+        "- **업무용 요약**: 일상적인 안내용, 담백한 톤\n"
+        "- **중점 방어 안내**: 방어 우선순위 강조\n"
+        "- **긴급 재확인 요청**: 리스크가 높을 때 사용하는 긴급 템플릿"
+    )
 
-        tmp_mgr_5 = df_u.copy()
-        if sel_branch_5 != "전체":
-            tmp_mgr_5 = tmp_mgr_5[tmp_mgr_5["관리지사"] == sel_branch_5]
+# 템플릿 기반 기본 제목/본문 생성
+subject_default, body_default = build_template(
+    template_type=template_type,
+    branch=branch_sel if branch_sel != "(전체)" else "전체 지사",
+    base_manager=base_manager_sel,
+    num_targets=num_total_targets,
+    recent_days=RECENT_DAYS,
+)
 
-        mgr_options_5 = (
-            ["전체"]
-            + sorted(
-                tmp_mgr_5["구역담당자_통합"]
-                .dropna()
-                .astype(str)
-                .unique()
-                .tolist()
-            )
-            if "구역담당자_통합" in tmp_mgr_5.columns
-            else ["전체"]
-        )
+# 템플릿 변경 시에만 기본값 갱신
+if "tpl_type_prev" not in st.session_state:
+    st.session_state["tpl_type_prev"] = template_type
+if "email_subject" not in st.session_state:
+    st.session_state["email_subject"] = subject_default
+if "email_body" not in st.session_state:
+    st.session_state["email_body"] = body_default
 
-        sel_mgr_5 = f2.radio(
-            "담당자 선택",
-            options=mgr_options_5,
-            horizontal=True,
-            key="tab5_mgr_radio",
-        )
+if st.session_state["tpl_type_prev"] != template_type:
+    # 템플릿 바뀌면 기본값으로 다시 채워주기
+    st.session_state["email_subject"] = subject_default
+    st.session_state["email_body"] = body_default
+    st.session_state["tpl_type_prev"] = template_type
 
-        defense_types = ["지사방어", "센터방어"]
-        filter_type = f3.radio(
-            "VOC유형소 필터 방식",
-            options=[
-                "전체 보기",
-                "지사방어만 보기",
-                "센터방어만 보기",
-                "지사·센터방어 제외한 실제 활동대상 보기",
-            ],
-            horizontal=False,
-            key="tab5_filter_radio",
-        )
+st.markdown("##### 3) 메일 제목/본문 작성")
 
-        a1, a2 = st.columns(2)
-        addr_kw = a1.text_input("설치주소 검색(부분)", key="tab5_addr_kw")
+email_subject = st.text_input(
+    "메일 제목",
+    value=st.session_state["email_subject"],
+    key="email_subject",
+)
 
-        ktt_min, ktt_max = None, None
-        if df_u["월정료_수치"].notna().any():
-            valid_fee = df_u["월정료_수치"].dropna()
-            min_val = int(valid_fee.min())
-            max_val = int(valid_fee.max())
-            ktt_min, ktt_max = a2.slider(
-                "월정료(숫자 기준) 범위",
-                min_value=min_val,
-                max_value=max_val,
-                value=(min_val, max_val),
-                step=1000,
-                key="tab5_ktt_slider",
-            )
+email_body = st.text_area(
+    "메일 본문",
+    value=st.session_state["email_body"],
+    height=260,
+    key="email_body",
+)
 
-        df_filtered = df_u.copy()
+# 미리보기
+st.markdown("###### ✨ 발송 미리보기")
+st.markdown(
+    f"<div class='email-preview'>To: {receiver_email or '[이메일 미등록]'}\n"
+    f"Subject: {email_subject}\n\n"
+    f"{email_body}</div>",
+    unsafe_allow_html=True,
+)
 
-        if sel_branch_5 != "전체":
-            df_filtered = df_filtered[df_filtered["관리지사"] == sel_branch_5]
-        if sel_mgr_5 != "전체":
-            df_filtered = df_filtered[
-                df_filtered["구역담당자_통합"].astype(str) == sel_mgr_5
-            ]
-
-        if filter_type == "지사방어만 보기":
-            df_filtered = df_filtered[df_filtered["VOC유형소"] == "지사방어"]
-        elif filter_type == "센터방어만 보기":
-            df_filtered = df_filtered[df_filtered["VOC유형소"] == "센터방어"]
-        elif filter_type == "지사·센터방어 제외한 실제 활동대상 보기":
-            df_filtered = df_filtered[
-                ~df_filtered["VOC유형소"].isin(defense_types)
-            ]
-
-        if addr_kw:
-            df_filtered = df_filtered[
-                df_filtered["설치주소_표시"]
-                .astype(str)
-                .str.contains(addr_kw.strip())
-            ]
-
-        if ktt_min is not None and ktt_max is not None:
-            df_filtered = df_filtered[
-                df_filtered["월정료_수치"].between(ktt_min, ktt_max)
-            ]
-
-        st.markdown(
-            f"📌 **필터 적용 후 계약 수 : {df_filtered['계약번호_정제'].nunique():,} 건**"
-        )
-
-        if df_filtered.empty:
-            st.warning("조건에 해당하는 데이터가 없습니다.")
-        else:
-            df_sorted = df_filtered.sort_values("접수일시", ascending=False)
-            grp = df_sorted.groupby("계약번호_정제")
-            idx_latest = grp["접수일시"].idxmax()
-            df_summary = df_sorted.loc[idx_latest].copy()
-            df_summary["접수건수"] = grp.size().reindex(
-                df_summary["계약번호_정제"]
-            ).values
-
-            sum_cols = [
-                "계약번호_정제",
-                "상호",
-                "관리지사",
-                "구역담당자_통합",
-                "VOC유형소",
-                "리스크등급",
-                "경과일수",
-                "접수건수",
-                "설치주소_표시",
-                fee_raw_col if fee_raw_col is not None else None,
-                "계약상태(중)",
-                "서비스(소)",
-            ]
-            sum_cols = [c for c in sum_cols if c and c in df_summary.columns]
-            sum_cols = filter_valid_columns(sum_cols, df_summary)
-
-            st.dataframe(
-                style_risk(df_summary[sum_cols]),
-                use_container_width=True,
-                height=450,
-            )
-
-            st.markdown("---")
-            st.markdown("### 📂 선택 계약 상세 VOC 이력")
-
-            cn_list = df_summary["계약번호_정제"].astype(str).tolist()
-            sel_cn5 = st.selectbox(
-                "계약 선택",
-                options=["(선택)"] + cn_list,
-                key="tab5_cn_select",
-            )
-
-            if sel_cn5 != "(선택)":
-                detail = df_filtered[
-                    df_filtered["계약번호_정제"].astype(str) == sel_cn5
-                ].sort_values("접수일시", ascending=False)
-
-                st.dataframe(
-                    style_risk(detail[display_cols]),
-                    use_container_width=True,
-                    height=400,
-                )
+st.markdown("</div>", unsafe_allow_html=True)
 
 # ====================================================
-# TAB 6 — 담당자 알림(이메일/SMS/카카오 템플릿 + SMTP)
+# 11. 발송 버튼
 # ====================================================
-with tab6:
-    st.subheader("📨 담당자 알림 (이메일 / SMS / 카카오톡 템플릿)")
+st.markdown(
+    '<div class="section-card"><div class="section-title">🚀 메일 발송</div>',
+    unsafe_allow_html=True,
+)
 
-    if df_contact.empty:
-        st.info("좌측 사이드바에서 먼저 담당자 연락처 엑셀을 업로드해주세요.")
-    elif unmatched_global.empty:
-        st.info("현재 필터 조건에서 비매칭(X) 계약이 없습니다. 조건을 넓혀서 다시 확인해주세요.")
-    else:
-        merged_unmatched = unmatched_global.merge(
-            df_contact,
-            left_on="영업구역_통합",
-            right_on="담당상세",
-            how="left",
-            suffixes=("", "_연락처"),
-        )
+st.caption(
+    "※ 실제 운영에 사용하기 전에, **본인 메일 주소로 테스트 발송**을 반드시 진행한 후 사용해주세요."
+)
 
-        notify_mode = st.radio(
-            "알림 사용 방식 선택",
-            options=["이메일 템플릿만 사용", "이메일 직접 발송(SMTP)", "SMS·카카오톡 텍스트 템플릿"],
-            horizontal=True,
-            key="notify_mode",
-        )
+col_send1, col_send2 = st.columns([1, 3])
 
-        c1n, c2n = st.columns(2)
-        branch_options = ["전체"] + sorted(
-            df_contact["소속"].dropna().astype(str).unique().tolist()
-        )
-        sel_branch_notify = c1n.selectbox(
-            "알림 대상 지사(소속) 선택",
-            options=branch_options,
-            key="notify_branch",
-        )
+with col_send1:
+    send_confirm = st.checkbox("위 내용으로 메일 발송에 동의합니다.", value=False)
 
-        df_contact_branch = df_contact.copy()
-        if sel_branch_notify != "전체":
-            df_contact_branch = df_contact_branch[
-                df_contact_branch["소속"] == sel_branch_notify
-            ]
-
-        manager_options = (
-            df_contact_branch["처리자1"]
-            .dropna()
-            .astype(str)
-            .unique()
-            .tolist()
-        )
-
-        if not manager_options:
-            st.warning("선택한 지사에 등록된 담당자가 없습니다.")
+with col_send2:
+    if st.button("✉ 이메일 발송", type="primary"):
+        if not receiver_email:
+            st.error("수신자 이메일 주소가 없습니다. 담당자 매핑 파일을 확인해주세요.")
+        elif not email_subject.strip():
+            st.error("메일 제목을 입력해주세요.")
+        elif not email_body.strip():
+            st.error("메일 본문을 입력해주세요.")
+        elif not send_confirm:
+            st.warning("발송 동의 체크박스를 먼저 선택해주세요.")
         else:
-            sel_manager = c2n.selectbox(
-                "알림 보낼 담당자 선택",
-                options=manager_options,
-                key="notify_manager",
-            )
+            ok = send_email(receiver_email, email_subject.strip(), email_body.strip())
+            if ok:
+                st.success(f"✅ {receiver_name} ({receiver_email}) 님에게 메일이 발송되었습니다.")
 
-            mask_manager = (
-                (df_contact["처리자1"].astype(str) == sel_manager)
-                & (
-                    (sel_branch_notify == "전체")
-                    | (df_contact["소속"].astype(str) == sel_branch_notify)
-                )
-            )
-            df_contact_sel = df_contact[mask_manager].copy()
-            if df_contact_sel.empty:
-                st.error("선택한 담당자의 연락처 정보를 찾지 못했습니다. 연락처 파일을 확인해주세요.")
-            else:
-                row_contact = df_contact_sel.iloc[0]
-
-                zone_code = row_contact.get("담당상세", "")
-                email_to = row_contact.get("EMAIL", "")
-                phone_to = row_contact.get("연락처", "")
-                ref_person = row_contact.get("참조자", "")
-
-                target_rows = merged_unmatched[
-                    merged_unmatched["담당상세"] == zone_code
-                ].copy()
-                target_cnt = target_rows["계약번호_정제"].nunique()
-
-                st.markdown("#### 🎯 선택된 담당자 정보")
-                i1, i2, i3 = st.columns(3)
-                i1.metric("담당자", sel_manager)
-                i2.metric("소속", row_contact.get("소속", ""))
-                i3.metric("비매칭 계약 수", f"{target_cnt:,}건")
-
-                st.caption(f"📧 이메일: {email_to}")
-                st.caption(f"📱 연락처: {phone_to}")
-                if ref_person and str(ref_person).lower() != "nan":
-                    st.caption(f"👥 참조자(대무자 등): {ref_person}")
-
-                st.markdown("---")
-
-                if not target_rows.empty:
-                    st.markdown("##### 주요 비매칭 계약 미리보기 (상위 5건)")
-                    preview_cols = [
-                        c
-                        for c in [
-                            "계약번호_정제",
-                            "상호",
-                            "관리지사",
-                            "구역담당자_통합",
-                            "리스크등급",
-                            "경과일수",
-                            "설치주소_표시",
-                        ]
-                        if c in target_rows.columns
-                    ]
-                    st.dataframe(
-                        style_risk(
-                            target_rows.sort_values("접수일시", ascending=False)[
-                                preview_cols
-                            ].head(5)
-                        ),
-                        use_container_width=True,
-                        height=220,
-                    )
-                else:
-                    st.info("해당 담당자의 비매칭 계약이 현재 필터 조건에서는 존재하지 않습니다.")
-
-                st.markdown("---")
-                st.markdown("#### ✉ 알림 내용 템플릿")
-
-                base_branch_for_subject = (
-                    sel_branch_notify
-                    if sel_branch_notify != "전체"
-                    else str(row_contact.get("소속", ""))
-                )
-
-                default_subject = (
-                    f"[해지 VOC] {base_branch_for_subject} {sel_manager} 담당 비매칭 {target_cnt}건 안내"
-                )
-
-                sample_list = ""
-                if not target_rows.empty:
-                    sample = target_rows.sort_values(
-                        "접수일시", ascending=False
-                    ).head(5)
-                    lines = []
-                    for _, r in sample.iterrows():
-                        cn = str(r.get("계약번호_정제", ""))
-                        name = str(r.get("상호", ""))
-                        risk = str(r.get("리스크등급", ""))
-                        days = str(r.get("경과일수", ""))
-                        lines.append(f"- {cn} | {name} | {risk} | 경과 {days}일")
-                    sample_list = "\n".join(lines)
-
-                default_body = f"""안녕하세요. {sel_manager} 담당님.
-
-현재 담당 구역({zone_code}) 기준 해지 VOC 비매칭 계약이 총 {target_cnt}건 확인되었습니다.
-
-주요 계약 내역(일부):
-{sample_list}
-
-자세한 내용은 해지 VOC 종합 대시보드에서
-지사/담당자 및 계약번호를 기준으로 확인 부탁드립니다.
-
-감사합니다.
-"""
-
-                email_subject = st.text_input(
-                    "메일 제목",
-                    value=default_subject,
-                    key="notify_email_subject",
-                )
-                main_body = st.text_area(
-                    "메일 / 카카오톡 / SMS 본문 (복사 후 사용 가능)",
-                    value=default_body,
-                    height=220,
-                    key="notify_email_body",
-                )
-
-                st.markdown("##### 📌 수신자 추가/변경")
-
-                extra_email = st.text_input(
-                    "추가 수신자 이메일 (쉼표로 구분, 선택)",
-                    key="notify_extra_email",
-                    placeholder="예: aaa@kt.com, bbb@kt.com",
-                )
-
-                all_managers = (
-                    df_contact["처리자1"]
-                    .dropna()
-                    .astype(str)
-                    .unique()
-                    .tolist()
-                )
-                backup_manager = st.selectbox(
-                    "대무자(대체 수신자) 선택 (선택)",
-                    options=["(선택 안 함)"] + all_managers,
-                    key="notify_backup_manager",
-                )
-
-                backup_email = ""
-                if backup_manager != "(선택 안 함)":
-                    df_backup = df_contact[
-                        df_contact["처리자1"].astype(str) == backup_manager
-                    ]
-                    if not df_backup.empty:
-                        backup_email = str(df_backup.iloc[0].get("EMAIL", ""))
-                        st.caption(
-                            f"대무자: {backup_manager} / 이메일: {backup_email}"
-                        )
-                    else:
-                        st.warning(
-                            "선택한 대무자의 이메일 정보를 찾지 못했습니다. 연락처 파일을 확인해주세요."
-                        )
-
-                st.markdown("---")
-
-                if notify_mode in ["이메일 템플릿만 사용", "SMS·카카오톡 텍스트 템플릿"]:
-                    if st.button("📋 내용 복사 완료로 표시", key="notify_done"):
-                        st.success("알림 템플릿이 준비되었습니다. 메일/카카오/문자에 붙여넣어 사용하세요.")
-
-                if notify_mode == "이메일 직접 발송(SMTP)":
-                    st.markdown("#### ✉ SMTP 메일 발송 설정")
-
-                    with st.expander("SMTP 서버 설정 (사내 메일 정책에 맞게 입력)", expanded=False):
-                        smtp_host = st.text_input("SMTP 서버 주소", value="", key="smtp_host")
-                        smtp_port = st.number_input(
-                            "SMTP 포트", value=587, step=1, key="smtp_port"
-                        )
-                        smtp_user = st.text_input(
-                            "SMTP 사용자 계정", value="", key="smtp_user"
-                        )
-                        smtp_password = st.text_input(
-                            "SMTP 비밀번호", value="", type="password", key="smtp_password"
-                        )
-                        from_addr = st.text_input(
-                            "보내는 사람 이메일(From)", value=email_to, key="smtp_from"
-                        )
-
-                    to_list = []
-                    cc_list = []
-
-                    if email_to and str(email_to).lower() != "nan":
-                        to_list.append(email_to)
-
-                    if backup_email:
-                        cc_list.append(backup_email)
-
-                    if extra_email.strip():
-                        extra_list = [
-                            e.strip()
-                            for e in extra_email.split(",")
-                            if e.strip()
-                        ]
-                        cc_list.extend(extra_list)
-
-                    st.write("**To:**", ", ".join(to_list) if to_list else "(없음)")
-                    st.write("**Cc:**", ", ".join(cc_list) if cc_list else "(없음)")
-
-                    def send_email_smtp(
-                        host, port, user, password, from_addr, to_addrs, cc_addrs, subject, body
-                    ):
-                        msg = EmailMessage()
-                        msg["Subject"] = subject
-                        msg["From"] = from_addr
-                        msg["To"] = ", ".join(to_addrs)
-                        if cc_addrs:
-                            msg["Cc"] = ", ".join(cc_addrs)
-                        msg.set_content(body)
-
-                        all_recipients = list(to_addrs) + list(cc_addrs)
-
-                        with smtplib.SMTP(host, port) as server:
-                            server.starttls()
-                            if user:
-                                server.login(user, password)
-                            server.send_message(msg, from_addr=from_addr, to_addrs=all_recipients)
-
-                    if st.button("📨 메일 발송 실행", key="smtp_send"):
-                        if not (smtp_host and smtp_port and from_addr and to_list):
-                            st.error("SMTP 서버 정보 및 기본 수신자 이메일(To)을 모두 입력해주세요.")
-                        else:
-                            try:
-                                send_email_smtp(
-                                    smtp_host,
-                                    int(smtp_port),
-                                    smtp_user,
-                                    smtp_password,
-                                    from_addr,
-                                    to_list,
-                                    cc_list,
-                                    email_subject,
-                                    main_body,
-                                )
-                                st.success("메일 발송 요청이 성공적으로 처리되었습니다. (로컬/사내망 환경에서 실제 발송)")
-                            except Exception as e:
-                                st.error(f"메일 발송 중 오류가 발생했습니다: {e}")
+st.markdown("</div>", unsafe_allow_html=True)
