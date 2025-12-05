@@ -6,54 +6,83 @@ import pandas as pd
 import streamlit as st
 import plotly.express as px
 
-# ============================
-# 담당자 연락처 / 발송 유틸
-# ============================
+# ==========================================
+# 연락처 데이터 업로드 + 담당자 매핑
+# ==========================================
 
-def _pick_first_non_null(series: pd.Series):
-    """시리즈에서 첫 번째로 값이 있는 항목만 뽑기"""
-    series = series.dropna().astype(str).str.strip()
-    series = series[series != ""]
-    return series.iloc[0] if not series.empty else None
+import io
+
+st.sidebar.markdown("### 📬 담당자 연락처 파일 업로드")
+contact_file = st.sidebar.file_uploader(
+    "연락처 파일 업로드 (CSV 또는 XLSX)", 
+    type=["csv", "xlsx"],
+    key="contact_upload"
+)
+
+@st.cache_data
+def load_contact_file(uploaded_file):
+    if uploaded_file is None:
+        return pd.DataFrame()
+
+    try:
+        if uploaded_file.name.endswith(".csv"):
+            df = pd.read_csv(uploaded_file, encoding="utf-8-sig")
+        else:
+            df = pd.read_excel(uploaded_file)
+    except Exception as e:
+        st.error(f"연락처 파일 로딩 오류: {e}")
+        return pd.DataFrame()
+
+    # 컬럼 이름 표준화
+    rename_map = {
+        "담당자": "담당자명",
+        "이름": "담당자명",
+        "대표자명": "담당자명",
+        "email": "이메일",
+        "mail": "이메일",
+        "휴대폰번호": "휴대폰",
+        "전화번호": "휴대폰",
+    }
+    df = df.rename(columns=rename_map)
+
+    # 필수 컬럼 체크
+    required_cols = ["담당자명"]
+    for col in required_cols:
+        if col not in df.columns:
+            st.warning("⚠ 연락처 파일에는 반드시 '담당자명' 컬럼이 있어야 합니다.")
+            return pd.DataFrame()
+
+    return df
 
 
-def get_manager_contact(df_base: pd.DataFrame, manager_name: str):
-    """
-    구역담당자_통합 기준으로 담당자 연락처(이메일/휴대폰/카카오ID)를 추출
-    엑셀에 어떤 컬럼이 있냐에 따라 자동으로 찾아봄
-    """
-    df_mgr = df_base[df_base["구역담당자_통합"].astype(str) == str(manager_name)]
+contact_df = load_contact_file(contact_file)
 
-    if df_mgr.empty:
-        return {"email": None, "phone": None, "kakao": None}
+# 담당자 연락처 조회 함수 (연락처 파일 우선)
+def get_manager_contact(manager_name: str):
+    if contact_df.empty:
+        return {"email": None, "phone": None, "kakao": None, "is_matched": False}
 
-    # 사용될 수 있는 컬럼 후보들
-    email_cols = ["담당자이메일", "이메일", "구역담당자이메일"]
-    phone_cols = ["담당자휴대폰", "휴대폰번호", "연락처", "담당자연락처"]
-    kakao_cols = ["담당자카카오ID", "카카오ID", "카카오톡ID"]
+    df_match = contact_df[
+        contact_df["담당자명"].astype(str).str.strip() == str(manager_name).strip()
+    ]
 
-    email = None
-    for col in email_cols:
-        if col in df_mgr.columns:
-            email = _pick_first_non_null(df_mgr[col])
-            if email:
-                break
+    if df_match.empty:
+        return {"email": None, "phone": None, "kakao": None, "is_matched": False}
 
-    phone = None
-    for col in phone_cols:
-        if col in df_mgr.columns:
-            phone = _pick_first_non_null(df_mgr[col])
-            if phone:
-                break
+    row = df_match.iloc[0]
+    return {
+        "email": row.get("이메일"),
+        "phone": row.get("휴대폰"),
+        "kakao": row.get("카카오ID"),
+        "is_matched": True,
+    }
 
-    kakao = None
-    for col in kakao_cols:
-        if col in df_mgr.columns:
-            kakao = _pick_first_non_null(df_mgr[col])
-            if kakao:
-                break
-
-    return {"email": email, "phone": phone, "kakao": kakao}
+# 연락처 파일 전체 목록 → "대무자/본부 담당자 선택 기능"에 사용
+all_contact_names = []
+if not contact_df.empty:
+    all_contact_names = sorted(
+        contact_df["담당자명"].dropna().astype(str).unique().tolist()
+    )
 
 
 # ----------------------------
@@ -1278,92 +1307,86 @@ with tab4:
         st.markdown("---")
 
         # ==========================================
-        # 📬 담당자별 알림 발송 섹션
-        # ==========================================
-        st.markdown("### ✉️ 담당자별 알림 발송")
+# 📬 담당자별 알림 발송 (업그레이드 버전)
+# ==========================================
 
-        # 사용할 담당자 목록 (비어있지 않은 값만)
-        mgr_list_notify = (
-            unmatched_global["구역담당자_통합"]
-            .dropna()
-            .astype(str)
-            .str.strip()
-            .replace("", np.nan)
-            .dropna()
-            .unique()
-            .tolist()
-        )
+st.markdown("### ✉️ 담당자/대무자 알림 발송")
 
-        if not mgr_list_notify:
-            st.info("알림을 보낼 담당자 정보(구역담당자_통합)가 없습니다.")
-        else:
-            col_n1, col_n2 = st.columns([2, 3])
+# 기본 담당자 목록 (비매칭 기준)
+mgr_list = unmatched_global["구역담당자_통합"].dropna().astype(str).unique().tolist()
 
-            sel_mgr_notify = col_n1.selectbox(
-                "알림을 보낼 담당자 선택",
-                options=mgr_list_notify,
-                key="notify_mgr_select",
-            )
+colA, colB = st.columns([2, 3])
 
-            channel = col_n2.radio(
-                "발송 채널 선택",
-                options=["이메일", "SMS", "카카오톡"],
-                horizontal=True,
-                key="notify_channel_radio",
-            )
+sel_mgr = colA.selectbox("📌 알림 대상 담당자 선택", mgr_list, key="notify_main_mgr")
 
-            # 선택된 담당자 기준 비매칭 계약 요약
-            mgr_voc = unmatched_global[
-                unmatched_global["구역담당자_통합"].astype(str) == str(sel_mgr_notify)
-            ].copy()
+send_target_type = colB.radio(
+    "발송 대상 선택",
+    ["담당자에게 보내기", "다른 사람(대무자 등)에게 보내기"],
+    horizontal=True,
+)
 
-            st.caption(
-                f"선택된 담당자 {sel_mgr_notify}님의 비매칭(X) 계약 수: "
-                f"**{mgr_voc['계약번호_정제'].nunique():,} 건**"
-            )
+# ------------------------------
+# 발송 대상 선택 (담당자 또는 대무자)
+# ------------------------------
+if send_target_type == "담당자에게 보내기":
+    target_name = sel_mgr
+else:
+    # 연락처파일이 없는 경우
+    if not all_contact_names:
+        st.warning("⚠ 연락처 파일 업로드 시 대무자 선택이 활성화됩니다.")
+        target_name = None
+    else:
+        target_name = st.selectbox("대무자/기타 담당자 선택", all_contact_names)
 
-            # 발송 메세지 템플릿
-            default_subject = f"[해지 VOC] {sel_mgr_notify}님 담당 비매칭 VOC 현황 알림"
-            default_body = (
-                f"{sel_mgr_notify}님,\n\n"
-                f"현재 담당하신 비매칭(X) 해지 VOC 계약이 "
-                f"{mgr_voc['계약번호_정제'].nunique():,}건 존재합니다.\n"
-                f"대시보드를 통해 상세 이력을 확인하시고, 필요 시 고객 대응을 진행 부탁드립니다.\n\n"
-                f"- 기준일: {today.strftime('%Y-%m-%d')}\n"
-            )
 
-            if channel == "이메일":
-                subject = st.text_input("메일 제목", value=default_subject, key="notify_email_subj")
-                body = st.text_area("메일 본문", value=default_body, key="notify_email_body", height=160)
-            else:
-                # SMS / 카카오톡은 제목 없이 본문만
-                body = st.text_area("메시지 내용", value=default_body, key="notify_msg_body", height=160)
-                subject = None
+# ------------------------------
+# 발송 채널 선택
+# ------------------------------
+channel = st.radio(
+    "발송 채널",
+    ["이메일", "SMS", "카카오톡"],
+    horizontal=True,
+)
 
-            # 담당자 연락처 조회
-            contact = get_manager_contact(voc_filtered_global, sel_mgr_notify)
+# ------------------------------
+# 메시지 내용 구성
+# ------------------------------
+mgr_voc_cnt = unmatched_global[
+    unmatched_global["구역담당자_통합"].astype(str) == sel_mgr
+]["계약번호_정제"].nunique()
 
-            with st.expander("📇 담당자 연락처 확인"):
-                st.write("추정된 담당자 연락처(엑셀 컬럼 기반 자동 탐색):")
-                st.write(f"- 이메일: {contact.get('email') or '❌ 없음'}")
-                st.write(f"- 휴대폰: {contact.get('phone') or '❌ 없음'}")
-                st.write(f"- 카카오ID: {contact.get('kakao') or '❌ 없음'}")
-                st.caption("※ 필요한 경우 merged.xlsx에 담당자 이메일/휴대폰/카카오ID 컬럼을 추가해 주세요.")
+default_msg = (
+    f"{target_name}님,\n"
+    f"{sel_mgr} 담당자의 비매칭 VOC가 현재 {mgr_voc_cnt}건 존재합니다.\n"
+    f"대시보드를 확인해주시기 바랍니다.\n\n"
+    f"- 발송 기준일 : {datetime.now().strftime('%Y-%m-%d')}"
+)
 
-            # 발송 버튼
-            if st.button("🚀 알림 발송(테스트 모드)", key="notify_send_btn"):
-                if channel == "이메일":
-                    ok, msg = send_email(contact.get("email"), subject, body)
-                elif channel == "SMS":
-                    ok, msg = send_sms(contact.get("phone"), body)
-                else:
-                    ok, msg = send_kakao(contact.get("kakao"), body)
+message = st.text_area("메시지 내용", value=default_msg, height=150)
 
-                if ok:
-                    st.success(msg)
-                else:
-                    st.error(msg)
+# ------------------------------
+# 연락처 매핑
+# ------------------------------
+contact = get_manager_contact(target_name)
 
+with st.expander("📇 발송 대상 연락처 확인"):
+    st.write(contact)
+
+# ------------------------------
+# 발송 버튼
+# ------------------------------
+if st.button("🚀 알림 발송"):
+    if channel == "이메일":
+        ok, msg = send_email(contact["email"], f"[VOC 알림] {target_name}님께", message)
+    elif channel == "SMS":
+        ok, msg = send_sms(contact["phone"], message)
+    else:
+        ok, msg = send_kakao(contact["kakao"], message)
+
+    if ok:
+        st.success(f"발송 성공 ✔\n{msg}")
+    else:
+        st.error(f"발송 실패 ❌\n{msg}")
 # ----------------------------------------------------
 # 피드백 이력 & 입력 (선택된 sel_cn 기준, 공통 섹션)
 # ----------------------------------------------------
