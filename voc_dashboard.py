@@ -24,9 +24,12 @@ st.markdown(
     """
     <style>
     /* 전체 배경 & 기본 폰트 (다크모드 무시, 항상 라이트톤 고정) */
+    html, body {
+        background-color: #f5f5f7 !important;
+    }
     .stApp {
-        background-color: #f5f5f7;
-        color: #111827;
+        background-color: #f5f5f7 !important;
+        color: #111827 !important;
         font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
     }
 
@@ -40,12 +43,12 @@ st.markdown(
 
     /* 헤더 영역 배경 */
     [data-testid="stHeader"] {
-        background-color: #f5f5f7;
+        background-color: #f5f5f7 !important;
     }
 
     /* 사이드바 스타일 */
     section[data-testid="stSidebar"] {
-        background-color: #fafafa;
+        background-color: #fafafa !important;
         border-right: 1px solid #e5e7eb;
     }
     section[data-testid="stSidebar"] .block-container {
@@ -561,7 +564,6 @@ def style_risk(df_view: pd.DataFrame):
 
     return df_view.style.apply(_row_style, axis=1)
 
-
 # ----------------------------------------------------
 # 10. 사이드바 글로벌 필터
 # ----------------------------------------------------
@@ -951,17 +953,19 @@ with tab_all:
             temp["상호"].astype(str).str.contains(q_name.strip())
         ]
     if q_addr:
-        cond = False
+        cond = None
         if "설치주소_표시" in temp.columns:
             cond = temp["설치주소_표시"].astype(str).str.contains(q_addr.strip())
         else:
             for col in address_cols:
                 if col in temp.columns:
-                    if isinstance(cond, bool) and cond is False:
-                        cond = temp[col].astype(str).str.contains(q_addr.strip())
+                    series_cond = temp[col].astype(str).str.contains(q_addr.strip())
+                    if cond is None:
+                        cond = series_cond
                     else:
-                        cond |= temp[col].astype(str).str.contains(q_addr.strip())
-        temp = temp[cond]
+                        cond = cond | series_cond
+        if cond is not None:
+            temp = temp[cond]
 
     if temp.empty:
         st.info("조건에 맞는 VOC 데이터가 없습니다.")
@@ -1480,7 +1484,10 @@ st.markdown("</div>", unsafe_allow_html=True)
 # ====================================================
 with tab_filter:
     st.subheader("🎯 해지방어 활동시설 정밀 필터 (VOC유형소 기준)")
-    st.info("현재 버전에서는 글로벌 필터 + 다른 탭에서 대부분 분석이 가능하도록 구성되어 있습니다.\n추후 필요 시 이 탭에 VOC유형소 중심의 추가 정밀 필터를 붙이면 됩니다.")
+    st.info(
+        "현재 버전에서는 글로벌 필터 + 다른 탭에서 대부분 분석이 가능하도록 구성되어 있습니다.\n"
+        "추후 필요 시 이 탭에 VOC유형소 중심의 추가 정밀 필터를 붙이면 됩니다."
+    )
 
 # ====================================================
 # TAB ALERT — 담당자 알림(베타)
@@ -1490,25 +1497,32 @@ with tab_alert:
 
     st.markdown(
         """
-        <div style="
-            background:#fff3cd;
-            border-left:6px solid #ffca2c;
-            padding:12px;
-            border-radius:6px;
-            margin-bottom:12px;
-            font-size:0.95rem;
-            line-height:1.45;
-        ">
-        <b>⚠ 담당자 매핑 파일을 찾을 수 없습니다.</b><br>
-        '영업구역담당자_251204.xlsx' 파일이 저장소 루트(/) 위치에 있는지 확인하세요.<br>
-        담당자 알림 탭에서는 이메일 주소를 직접 입력하여 사용할 수 있습니다.
-        </div>
-        """,
-        unsafe_allow_html=True,
+        담당자 파일(contact_map.xlsx 또는 영업구역담당자_251204.xlsx)을 자동 매핑하여  
+        비매칭(X) 계약 건을 **구역담당자별로 이메일로 발송**할 수 있습니다.
+        """
     )
 
-    # 매핑 파일이 없을 때 안내
     if contact_df.empty:
+        # 커스텀 경고 박스 + Streamlit warning
+        st.markdown(
+            """
+            <div style="
+                background:#fff3cd;
+                border-left:6px solid #ffca2c;
+                padding:12px;
+                border-radius:6px;
+                margin-bottom:12px;
+                font-size:0.95rem;
+                line-height:1.45;
+            ">
+            <b>⚠ 담당자 매핑 파일을 찾을 수 없습니다.</b><br>
+            '영업구역담당자_251204.xlsx' 파일이 저장소 루트(/) 위치에 있는지 확인하세요.<br>
+            담당자 알림 탭에서는 이메일 주소를 직접 입력하여 사용할 수 있습니다.
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
         st.warning(
             "⚠ 담당자 매핑 파일이 업로드되지 않았습니다.\n"
             "contact_map.xlsx 또는 영업구역담당자_251204.xlsx 파일을 저장소에 올려주세요."
@@ -1555,11 +1569,16 @@ with tab_alert:
 
             st.write(f"🔍 발송 데이터: **{len(df_mgr_rows)}건** 비매칭 VOC")
 
-            st.dataframe(
-                df_mgr_rows[["계약번호_정제", "상호", "관리지사", "리스크등급", "경과일수"]],
-                use_container_width=True,
-                height=250,
-            )
+            if not df_mgr_rows.empty:
+                st.dataframe(
+                    df_mgr_rows[
+                        ["계약번호_정제", "상호", "관리지사", "리스크등급", "경과일수"]
+                    ],
+                    use_container_width=True,
+                    height=250,
+                )
+            else:
+                st.info("해당 담당자에게 배정된 비매칭 계약이 없습니다.")
 
             subject = f"[해지VOC] {sel_mgr} 담당자 비매칭 계약 안내"
             body = (
@@ -1573,6 +1592,8 @@ with tab_alert:
             if st.button("📤 이메일 발송하기"):
                 if not custom_email:
                     st.error("이메일 주소를 입력해주세요.")
+                elif df_mgr_rows.empty:
+                    st.error("발송할 비매칭 계약 데이터가 없습니다.")
                 else:
                     try:
                         msg = EmailMessage()
