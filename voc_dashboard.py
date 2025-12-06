@@ -1488,8 +1488,6 @@ with tab_filter:
 with tab_alert:
     st.subheader("📨 담당자 알림 발송 (베타)")
 
-
-    if contact_df.empty:
     st.markdown(
         """
         <div style="
