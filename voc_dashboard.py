@@ -1488,12 +1488,7 @@ with tab_filter:
 with tab_alert:
     st.subheader("📨 담당자 알림 발송 (베타)")
 
-    st.markdown(
-        """
-        담당자 파일(contact_map.xlsx 또는 영업구역담당자_251204.xlsx)을 자동 매핑하여  
-        비매칭(X) 계약 건을 **구역담당자별로 이메일로 발송**할 수 있습니다.
-        """
-    )
+
     if contact_df.empty:
     st.markdown(
         """
