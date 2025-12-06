@@ -276,8 +276,8 @@ def load_contact_map(path: str) -> tuple[pd.DataFrame, dict]:
 
     df_c = pd.read_excel(path)
 
-    name_col = detect_column(df_c, ["구역담당자", "담당자", "성명", "이름"])
-    email_col = detect_column(df_c, ["이메일", "메일", "email"])
+    name_col = detect_column(df_c, ["구역담당자", "담당자", , "처리자1", "성명", "이름"])
+    email_col = detect_column(df_c, ["이메일", "메일", "E-MAIL"])
     phone_col = detect_column(df_c, ["휴대폰", "전화", "연락처", "핸드폰"])
 
     if not (name_col and email_col):
