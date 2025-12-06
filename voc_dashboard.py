@@ -1494,6 +1494,25 @@ with tab_alert:
         비매칭(X) 계약 건을 **구역담당자별로 이메일로 발송**할 수 있습니다.
         """
     )
+    if contact_df.empty:
+    st.markdown(
+        """
+        <div style="
+            background:#fff3cd;
+            border-left:6px solid #ffca2c;
+            padding:12px;
+            border-radius:6px;
+            margin-bottom:12px;
+            font-size:0.95rem;
+            line-height:1.45;
+        ">
+        <b>⚠ 담당자 매핑 파일을 찾을 수 없습니다.</b><br>
+        '영업구역담당자_251204.xlsx' 파일이 저장소 루트(/) 위치에 있는지 확인하세요.<br>
+        담당자 알림 탭에서는 이메일 주소를 직접 입력하여 사용할 수 있습니다.
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
 
     # 매핑 파일이 없을 때 안내
     if contact_df.empty:
