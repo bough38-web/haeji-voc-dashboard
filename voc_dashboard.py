@@ -177,7 +177,7 @@ else:
 # ----------------------------------------------------
 MERGED_PATH = "merged.xlsx"                 # VOC 통합파일
 FEEDBACK_PATH = "feedback.csv"              # 처리내역 CSV 저장 경로
-CONTACT_PATH = "contact_manager.xlsx"  # 담당자 매핑 파일
+CONTACT_PATH = "contact_map.xlsx"  # 담당자 매핑 파일
 
 # ----------------------------------------------------
 # 2. 공통 유틸
