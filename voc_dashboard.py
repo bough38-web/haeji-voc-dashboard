@@ -145,6 +145,13 @@ else:
     SMTP_PASSWORD = os.getenv("SMTP_PASSWORD")
     SENDER_NAME = os.getenv("SENDER_NAME")
 
+# ----------------------------------------------------
+# 1-A. 파일 경로 설정 (반드시 필요한 부분)
+# ----------------------------------------------------
+MERGED_PATH = "merged.xlsx"   # VOC 통합파일
+FEEDBACK_PATH = "feedback.csv"   # 처리내역 CSV 저장 경로
+CONTACT_PATH = "영업구역담당자_251204.xlsx"   # 담당자 매핑 파일
+
 
 # ----------------------------------------------------
 # 2. 공통 유틸
