@@ -15,36 +15,36 @@ except Exception:
     HAS_PLOTLY = False
 
 # ----------------------------------------------------
-# 0. 기본 설정 & 라이트톤 스타일 (CSS 개선)
+# 0. 기본 설정 & 라이트톤 / 반응형 레이아웃 CSS
 # ----------------------------------------------------
 st.set_page_config(page_title="해지 VOC 종합 대시보드", layout="wide")
 
 st.markdown(
     """
     <style>
-    /* 전체 배경 & 기본 폰트 */
+    /* 전체 배경 & 기본 폰트 (다크모드 무시, 항상 라이트톤 고정) */
     .stApp {
-        background-color: #f3f4f6;
+        background-color: #f5f5f7;
         color: #111827;
         font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
     }
 
-    /* 본문 컨테이너 여백 (상단 잘림 방지) */
+    /* 본문 컨테이너 여백 (상단 잘림 방지 + 모바일 여백 보정) */
     .block-container {
-        padding-top: 1.0rem;
-        padding-bottom: 3rem;
-        padding-left: 1.6rem;
-        padding-right: 1.6rem;
+        padding-top: 0.8rem !important;
+        padding-bottom: 3rem !important;
+        padding-left: 1.0rem !important;
+        padding-right: 1.0rem !important;
     }
 
     /* 헤더 영역 배경 */
     [data-testid="stHeader"] {
-        background-color: #f3f4f6;
+        background-color: #f5f5f7;
     }
 
     /* 사이드바 스타일 */
     section[data-testid="stSidebar"] {
-        background-color: #f9fafb;
+        background-color: #fafafa;
         border-right: 1px solid #e5e7eb;
     }
     section[data-testid="stSidebar"] .block-container {
@@ -52,7 +52,7 @@ st.markdown(
     }
 
     /* 제목들 간격 */
-    h2, h3, h4 {
+    h1, h2, h3, h4 {
         margin-top: 0.4rem;
         margin-bottom: 0.35rem;
         font-weight: 600;
@@ -118,80 +118,36 @@ st.markdown(
         padding-top: 0 !important;
         padding-bottom: 0.4rem !important;
     }
+
+    /* 모바일 대응 — width 900px 이하면 자동 1열 레이아웃 */
+    @media (max-width: 900px) {
+        [data-testid="column"] {
+            width: 100% !important;
+            flex-direction: column !important;
+        }
+        .block-container {
+            padding-left: 0.5rem !important;
+            padding-right: 0.5rem !important;
+        }
+    }
+
+    /* 표 overflow → 모바일 대응 */
+    [data-testid="stDataFrame"] div {
+        overflow-x: auto !important;
+    }
+
+    /* Plotly 차트 배경 투명 처리 */
+    .js-plotly-plot .plotly {
+        background-color: transparent !important;
+    }
     </style>
     """,
     unsafe_allow_html=True,
 )
 
-st.markdown("""
-<style>
-
-/* 기본 레이아웃 여백 보정 */
-.block-container {
-    padding-top: 0.6rem !important;
-    padding-left: 1rem !important;
-    padding-right: 1rem !important;
-}
-
-/* 모바일 대응 — 화면 700px 이하면 자동 1열 레이아웃 */
-@media (max-width: 700px) {
-    .css-18e3th9, .css-1d391kg {
-        flex-direction: column !important;
-    }
-    [data-testid="column"] {
-        width: 100% !important;
-        flex-direction: column !important;
-    }
-}
-
-/* 다크모드 대응 */
-:root, [data-theme="light"] {
-    --bg: #f3f4f6;
-    --card-bg: #ffffff;
-    --text: #111827;
-    --border: #e5e7eb;
-}
-
-[data-theme="dark"] {
-    --bg: #121212;
-    --card-bg: #1e1e1e;
-    --text: #e5e5e5;
-    --border: #333333;
-}
-
-/* 전체 배경 / 텍스트 */
-.stApp {
-    background-color: var(--bg) !important;
-    color: var(--text) !important;
-}
-
-/* 카드 */
-.section-card {
-    background-color: var(--card-bg) !important;
-    border: 1px solid var(--border) !important;
-    border-radius: 14px;
-    padding: 1rem 1.2rem;
-    margin-bottom: 1rem;
-}
-
-/* 표 overflow → 모바일 대응 */
-[data-testid="stDataFrame"] div {
-    overflow-x: auto !important;
-}
-
-/* Plotly 차트 배경 투명 처리 */
-.js-plotly-plot .plotly {
-    background-color: transparent !important;
-}
-
-</style>
-""", unsafe_allow_html=True)
-
 # ----------------------------------------------------
 # 1. 파일 경로 & SMTP 설정
 # ----------------------------------------------------
-import streamlit as st
-import os
 
 if "SMTP_HOST" in st.secrets:
     SMTP_HOST = st.secrets["SMTP_HOST"]
@@ -201,21 +157,23 @@ if "SMTP_HOST" in st.secrets:
     SENDER_NAME = st.secrets["SENDER_NAME"]
 else:
     # 로컬에서 dotenv 사용할 경우
-    from dotenv import load_dotenv
-    load_dotenv()
-    SMTP_HOST = os.getenv("SMTP_HOST")
+    try:
+        from dotenv import load_dotenv
+        load_dotenv()
+    except Exception:
+        pass
+    SMTP_HOST = os.getenv("SMTP_HOST", "")
     SMTP_PORT = int(os.getenv("SMTP_PORT", "587"))
-    SMTP_USER = os.getenv("SMTP_USER")
-    SMTP_PASSWORD = os.getenv("SMTP_PASSWORD")
-    SENDER_NAME = os.getenv("SENDER_NAME")
+    SMTP_USER = os.getenv("SMTP_USER", "")
+    SMTP_PASSWORD = os.getenv("SMTP_PASSWORD", "")
+    SENDER_NAME = os.getenv("SENDER_NAME", "해지VOC 관리자")
 
 # ----------------------------------------------------
-# 1-A. 파일 경로 설정 (반드시 필요한 부분)
+# 1-A. 파일 경로 설정
 # ----------------------------------------------------
-MERGED_PATH = "merged.xlsx"   # VOC 통합파일
-FEEDBACK_PATH = "feedback.csv"   # 처리내역 CSV 저장 경로
-CONTACT_PATH = "영업구역담당자_251204.xlsx"   # 담당자 매핑 파일
-
+MERGED_PATH = "merged.xlsx"                 # VOC 통합파일
+FEEDBACK_PATH = "feedback.csv"              # 처리내역 CSV 저장 경로
+CONTACT_PATH = "영업구역담당자_251204.xlsx"  # 담당자 매핑 파일
 
 # ----------------------------------------------------
 # 2. 공통 유틸
@@ -239,7 +197,6 @@ def detect_column(df: pd.DataFrame, keywords: list[str]) -> str | None:
             if k.lower() in s.lower():
                 return col
     return None
-
 
 # ----------------------------------------------------
 # 3. 데이터 로딩
@@ -386,7 +343,6 @@ def sort_branch(series):
         [s for s in series if s in BRANCH_ORDER],
         key=lambda x: BRANCH_ORDER.index(x),
     )
-
 
 # ----------------------------------------------------
 # 5. 영업구역 / 담당자 통합 컬럼
@@ -708,7 +664,7 @@ unmatched_global = voc_filtered_global[
 # ----------------------------------------------------
 # 12. 상단 KPI 카드
 # ----------------------------------------------------
-st.markdown("## 📊 해지 VOC 종합 내시보드")
+st.markdown("## 📊 해지 VOC 종합 대시보드")
 
 total_voc_rows = len(voc_filtered_global)
 unique_contracts = voc_filtered_global["계약번호_정제"].nunique()
@@ -730,7 +686,7 @@ k4.metric("매칭(O) 계약 수", f"{matched_contracts:,}")
 st.markdown("---")
 
 # ----------------------------------------------------
-# 13. 탭 구성 (순서 변경: 시각화 → 전체 → 해지방어 활동시설 → 드릴다운 → 정밀필터 → 담당자 알림)
+# 13. 탭 구성
 # ----------------------------------------------------
 tab_viz, tab_all, tab_unmatched, tab_drill, tab_filter, tab_alert = st.tabs(
     [
@@ -744,7 +700,7 @@ tab_viz, tab_all, tab_unmatched, tab_drill, tab_filter, tab_alert = st.tabs(
 )
 
 # ====================================================
-# TAB VIZ — 지사 / 담당자 시각화 (좌측 필터 + 우측 차트)
+# TAB VIZ — 지사 / 담당자 시각화
 # ====================================================
 with tab_viz:
     st.subheader("📊 지사 / 담당자별 비매칭 리스크 현황")
@@ -861,7 +817,6 @@ with tab_viz:
                         text="건수",
                     )
                     fig3.update_traces(textposition="outside")
-                    fig3.update_traces(textposition="outside")
                     fig3.update_layout(
                         height=300,
                         margin=dict(l=10, r=10, t=30, b=10),
@@ -929,7 +884,6 @@ with tab_viz:
                         title=f"🌐 {sel_mgr_viz} 담당자의 리스크 프로파일",
                     )
                     st.plotly_chart(fig_radar, use_container_width=True)
-
 
 # ====================================================
 # TAB ALL — VOC 전체 (계약번호 기준 요약)
@@ -1002,7 +956,10 @@ with tab_all:
         else:
             for col in address_cols:
                 if col in temp.columns:
-                    cond |= temp[col].astype(str).str.contains(q_addr.strip())
+                    if isinstance(cond, bool) and cond is False:
+                        cond = temp[col].astype(str).str.contains(q_addr.strip())
+                    else:
+                        cond |= temp[col].astype(str).str.contains(q_addr.strip())
         temp = temp[cond]
 
     if temp.empty:
@@ -1456,8 +1413,8 @@ else:
     fb_sel = fb_all[fb_all["계약번호_정제"].astype(str) == str(sel_cn)].copy()
     fb_sel = fb_sel.sort_values("등록일자", ascending=False)
 
-    # 관리자 비밀번호 입력
-    ADMIN_CODE = "1234"
+    # 관리자 비밀번호 (Q1=C, Q2=3, Q3=A → C3A)
+    ADMIN_CODE = "C3A"
     admin_pw = st.text_input("관리자 비밀번호 입력 (삭제/수정 시 필요)", type="password")
     is_admin = admin_pw == ADMIN_CODE
 
@@ -1516,6 +1473,13 @@ else:
             st.rerun()
 
 st.markdown("</div>", unsafe_allow_html=True)
+
+# ====================================================
+# TAB FILTER — (정밀 필터 탭은 추후 확장용, 현재는 안내만)
+# ====================================================
+with tab_filter:
+    st.subheader("🎯 해지방어 활동시설 정밀 필터 (VOC유형소 기준)")
+    st.info("현재 버전에서는 글로벌 필터 + 다른 탭에서 대부분 분석이 가능하도록 구성되어 있습니다.\n추후 필요 시 이 탭에 VOC유형소 중심의 추가 정밀 필터를 붙이면 됩니다.")
 
 # ====================================================
 # TAB ALERT — 담당자 알림(베타)
@@ -1615,7 +1579,8 @@ with tab_alert:
 
                         with smtplib.SMTP(SMTP_HOST, SMTP_PORT) as smtp:
                             smtp.starttls()
-                            smtp.login(SMTP_USER, SMTP_PASSWORD)
+                            if SMTP_USER and SMTP_PASSWORD:
+                                smtp.login(SMTP_USER, SMTP_PASSWORD)
                             smtp.send_message(msg)
 
                         st.success(f"✅ 이메일 발송 완료 → {custom_email}")
