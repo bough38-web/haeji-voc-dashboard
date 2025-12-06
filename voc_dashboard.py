@@ -17,7 +17,7 @@ st.set_page_config(page_title="해지VOC 담당자 안내 / 알림", layout="wid
 SMTP_HOST = "smtp.gmail.com"
 SMTP_PORT = 587
 SMTP_USER = "bough38@gmail.com"
-SMTP_PASSWORD = os.environ.get("SMTP_PASSWORD", "")  # ← 여기 직접 쓰지 말기
+SMTP_PASSWORD = os.environ.get("fdrq wmda vrhb cgsv", "")  # ← 여기 직접 쓰지 말기
 SENDER_NAME = "해지VOC 관리자"
 
 # ----------------------------------------------------
