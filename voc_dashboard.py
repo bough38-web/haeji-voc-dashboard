@@ -123,6 +123,70 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
+st.markdown("""
+<style>
+
+/* 기본 레이아웃 여백 보정 */
+.block-container {
+    padding-top: 0.6rem !important;
+    padding-left: 1rem !important;
+    padding-right: 1rem !important;
+}
+
+/* 모바일 대응 — 화면 700px 이하면 자동 1열 레이아웃 */
+@media (max-width: 700px) {
+    .css-18e3th9, .css-1d391kg {
+        flex-direction: column !important;
+    }
+    [data-testid="column"] {
+        width: 100% !important;
+        flex-direction: column !important;
+    }
+}
+
+/* 다크모드 대응 */
+:root, [data-theme="light"] {
+    --bg: #f3f4f6;
+    --card-bg: #ffffff;
+    --text: #111827;
+    --border: #e5e7eb;
+}
+
+[data-theme="dark"] {
+    --bg: #121212;
+    --card-bg: #1e1e1e;
+    --text: #e5e5e5;
+    --border: #333333;
+}
+
+/* 전체 배경 / 텍스트 */
+.stApp {
+    background-color: var(--bg) !important;
+    color: var(--text) !important;
+}
+
+/* 카드 */
+.section-card {
+    background-color: var(--card-bg) !important;
+    border: 1px solid var(--border) !important;
+    border-radius: 14px;
+    padding: 1rem 1.2rem;
+    margin-bottom: 1rem;
+}
+
+/* 표 overflow → 모바일 대응 */
+[data-testid="stDataFrame"] div {
+    overflow-x: auto !important;
+}
+
+/* Plotly 차트 배경 투명 처리 */
+.js-plotly-plot .plotly {
+    background-color: transparent !important;
+}
+
+</style>
+""", unsafe_allow_html=True)
+
 # ----------------------------------------------------
 # 1. 파일 경로 & SMTP 설정
 # ----------------------------------------------------
@@ -786,12 +850,17 @@ with tab_viz:
                     .fillna(0)
                 )
                 if HAS_PLOTLY and not rc.empty:
+                    rc_df = rc.reset_index()
+                    rc_df.columns = ["리스크등급", "건수"]
+                    rc_df["건수"] = rc_df["건수"].astype(int)
+
                     fig3 = px.bar(
-                        rc.reset_index(),
-                        x="index",
-                        y="리스크등급",
-                        text="리스크등급",
+                        rc_df,
+                        x="리스크등급",
+                        y="건수",
+                        text="건수",
                     )
+                    fig3.update_traces(textposition="outside")
                     fig3.update_traces(textposition="outside")
                     fig3.update_layout(
                         height=300,
