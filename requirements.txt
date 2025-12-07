@@ -1,6 +1,6 @@
+
+rapidfuzz
 streamlit
 pandas
-numpy
-openpyxl
 plotly
-python-dotenv
+openpyxl
