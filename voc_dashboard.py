@@ -108,6 +108,24 @@ def detect_column(df: pd.DataFrame, keys):
     return None
 
 # -------------------------------
+# STYLE 함수 (리스크 등급 색 강조)
+# -------------------------------
+def style_risk(df: pd.DataFrame):
+    def highlight_row(row):
+        color = ""
+        if "리스크등급" in row:
+            lv = str(row["리스크등급"]).upper()
+            if lv == "HIGH":
+                color = "background-color: #ffe5e5;"   # 연한 빨강
+            elif lv == "MEDIUM":
+                color = "background-color: #fff6d9;"   # 연한 노랑
+            elif lv == "LOW":
+                color = "background-color: #e9f7ff;"   # 연한 파랑
+        return [color] * len(row)
+
+    return df.style.apply(highlight_row, axis=1)
+    
+# -------------------------------
 # Data Loaders
 # -------------------------------
 @st.cache_data
