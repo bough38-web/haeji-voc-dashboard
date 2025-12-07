@@ -128,7 +128,7 @@ with tabs[0]:
     with r4:
         st.plotly_chart(px.pie(df_voc, names="리스크등급", title="리스크 분포 비중"), use_container_width=True)
 
-# --- TAB 2: 동적 계약 마스터 (다중 조건 핵심) ---
+# --- TAB 2: 동적 계약 마스터 (KeyError 및 다중 조건 해결) ---
 with tabs[1]:
     st.subheader("🔎 전출처 통합 동적 데이터베이스")
     f1, f2 = st.columns(2)
@@ -139,13 +139,24 @@ with tabs[1]:
     if sel_branches: df_m = df_m[df_m["관리지사"].isin(sel_branches)]
     if sel_mgrs: df_m = df_m[df_m["처리자"].fillna("미지정").isin(sel_mgrs)]
 
-    # 값이 있는 유효한 열만 리스트업 (가독성 향상)
-    available_cols = ["계약번호_정제", "상호", "리스크등급", "관리지사", "처리자", "시설_설치주소", "시설_KTT월정료(조정)"]
-    final_cols = [c for c in available_cols if c in df_m.columns]
+    # [핵심 수정] 정렬 기준인 '접수일시'를 필수 포함 리스트로 정의
+    available_cols = ["계약번호_정제", "상호", "리스크등급", "관리지사", "처리자", "시설_설치주소", "시설_KTT월정료(조정)", "접수일시"]
+    
+    # 1. 파일에 존재하는 컬럼만 선별
+    existing_cols = [c for c in available_cols if c in df_m.columns]
+    
+    # 2. 선별된 컬럼 중 내용이 전혀 없는(All Empty) 열 제외
+    final_cols = df_m[existing_cols].dropna(axis=1, how='all').columns.tolist()
+    
+    # 3. 정렬 시 '접수일시'가 final_cols에 있는지 확인 후 안전하게 정렬
+    if "접수일시" in final_cols:
+        display_df = df_m[final_cols].sort_values("접수일시", ascending=False)
+    else:
+        # 접수일시가 아예 비어있어 정렬이 불가한 경우 정렬 없이 출력
+        display_df = df_m[final_cols]
     
     st.write(f"**총 {len(df_m)}건의 데이터가 필터링되었습니다.**")
-    st.dataframe(df_m[final_cols].sort_values("접수일시", ascending=False), use_container_width=True, hide_index=True)
-
+    st.dataframe(display_df, use_container_width=True, hide_index=True)
 # --- TAB 3: 지능형 알림 전송 ---
 with tabs[2]:
     st.subheader("📨 전략 기반 자동 알림 전송")
