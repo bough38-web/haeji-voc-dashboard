@@ -134,9 +134,10 @@ with tabs[0]:
 with tabs[1]:
     st.subheader("🔎 전출처 통합 계약 데이터베이스 (Fuzzy 조회)")
     f1, f2 = st.columns(2)
-    q_branch = f1.multiselect("관리지사 필터", options=df_all["관리지사"].unique())
-    q_mgr = f2.selectbox("담당자 필터", options=["전체"] + sorted(df_all["처리자"].unique().tolist()))
-    
+    # 결측치를 "미지정"으로 채우고 모든 값을 문자열로 변환한 뒤 리스트화
+    mgr_list = df_all["처리자"].fillna("미지정").astype(str).unique().tolist()
+    # 담당자 필터 옵션 구성 (정렬된 리스트 앞에 "전체" 추가)
+    q_mgr = f2.selectbox("담당자 필터", options=["전체"] + sorted(mgr_list))
     df_m = df_all.copy()
     if q_branch: df_m = df_m[df_m["관리지사"].isin(q_branch)]
     if q_mgr != "전체": df_m = df_m[df_m["처리자"] == q_mgr]
