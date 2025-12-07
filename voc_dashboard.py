@@ -998,11 +998,15 @@ with tab_viz:
 
         if HAS_PLOTLY:
             fig_pie = px.pie(
-                rc.reset_index(),
-                names="index",
-                values="리스크등급",
-                hole=0.45,
-            )
+                rc_df = rc.reset_index()
+                rc_df.columns = ["리스크등급", "건수"]
+
+                fig_pie = px.pie(
+                    rc_df,
+                    names="리스크등급",
+                    values="건수",
+                    hole=0.45,
+                )
             fig_pie.update_layout(height=330, margin=dict(l=10, r=10, t=40, b=10))
             st.plotly_chart(fig_pie, use_container_width=True)
         else:
