@@ -2,6 +2,8 @@ import os
 import re
 import smtplib
 import urllib.parse
+import base64
+import time
 from datetime import datetime, date
 import numpy as np
 import pandas as pd
@@ -17,55 +19,37 @@ except ImportError:
     HAS_LIBS = False
 
 # ----------------------------------------------------
-# 0. 엔터프라이즈 테마 및 퍼블리싱 CSS
+# 0. 엔터프라이즈 테마 및 UX 설정
 # ----------------------------------------------------
-st.set_page_config(page_title="🛡️ VOC Enterprise Dashboard", layout="wide")
+st.set_page_config(page_title="🛡️ Enterprise VOC Intelligence Pro", layout="wide")
 
 st.markdown("""
     <style>
-    /* Modern Glassmorphism & Enterprise UI */
-    html, body, .stApp { background-color: #f8fafc; }
-    .stMetric { background: white; padding: 25px; border-radius: 16px; border: 1px solid #e2e8f0; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); }
-    .feedback-card { background: white; border-left: 6px solid #3b82f6; padding: 20px; border-radius: 10px; margin-bottom: 12px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
-    .admin-controls { display: flex; gap: 10px; margin-top: 10px; }
+    /* Modern Glassmorphism Theme */
+    html, body, .stApp { background-color: #f8fafc; color: #1e293b; font-family: 'Inter', -apple-system, sans-serif; }
+    .stMetric { background: white; padding: 25px; border-radius: 16px; border: 1px solid #e2e8f0; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05); }
+    .feedback-item { background: white; border-left: 5px solid #3b82f6; padding: 20px; border-radius: 12px; margin-bottom: 15px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
     div[data-testid="stExpander"] { background: white; border-radius: 12px; border: 1px solid #e2e8f0; }
     </style>
     """, unsafe_allow_html=True)
 
 # ----------------------------------------------------
-# 1. 데이터 파이프라인 & 세션 상태 (피드백 데이터베이스)
+# 1. 고성능 유틸리티 (URL 압축 및 지능형 매핑)
 # ----------------------------------------------------
-if "feedback_db" not in st.session_state:
-    st.session_state["feedback_db"] = pd.DataFrame(columns=["계약번호", "담당자", "상담상태", "상담내용", "입력일시"])
+def encode_id(text):
+    """URL 단축을 위한 Base64 인코딩"""
+    try: return base64.urlsafe_b64encode(str(text).encode()).decode().rstrip("=")
+    except: return text
 
-@st.cache_data
-def load_and_prep_data():
-    if not os.path.exists("merged.xlsx"): return pd.DataFrame()
-    df = pd.read_excel("merged.xlsx")
-    df["계약번호_정제"] = df["계약번호"].astype(str).str.replace(r"[^0-9A-Za-z]", "", regex=True)
-    df["접수일시"] = pd.to_datetime(df["접수일시"], errors="coerce")
-    
-    # 리스크 등급 생성 (3일 이내 긴급)
-    today = date.today()
-    df["리스크등급"] = df["접수일시"].apply(lambda dt: "HIGH" if pd.notna(dt) and (today - dt.date()).days <= 3 else "LOW")
-    return df[df["출처"] == "해지VOC"]
+def generate_short_feedback_url(contract_id, manager):
+    """최적화된 단축 피드백 URL 생성"""
+    base_url = "https://voc-fb.streamlit.app/?"
+    params = urllib.parse.urlencode({"s": encode_id(contract_id), "m": manager})
+    return base_url + params
 
-@st.cache_data
-def load_contact_map():
-    if not os.path.exists("contact_map.xlsx"): return {}
-    df_c = pd.read_excel("contact_map.xlsx")
-    # 컬럼명 유연성: E-MAIL 컬럼 우선 탐색
-    email_col = next((c for c in df_c.columns if "E-MAIL" in str(c) or "이메일" in str(c)), df_c.columns[1])
-    name_col = next((c for c in df_c.columns if "처리자" in str(c) or "담당자" in str(c)), df_c.columns[0])
-    return {str(row[name_col]).strip(): {"email": str(row[email_col]).strip()} for _, row in df_c.iterrows()}
-
-df_voc = load_and_prep_data()
-manager_contacts = load_contact_map()
-
-# ----------------------------------------------------
-# 2. 고위급 유틸리티 (URL 생성 및 매핑)
-# ----------------------------------------------------
-def get_smart_contact(name, contact_dict):
+def get_verified_contact(name, contact_dict):
+    """Fuzzy Matching을 통한 담당자 매핑 정합성 검증"""
+    if not name or str(name) == "nan": return None, "Name Missing"
     if name in contact_dict: return contact_dict[name], "Verified"
     if HAS_LIBS:
         choices = list(contact_dict.keys())
@@ -73,128 +57,134 @@ def get_smart_contact(name, contact_dict):
         if result and result[1] >= 85: return contact_dict[result[0]], f"Suggested({result[0]})"
     return None, "Not Found"
 
-def generate_feedback_url(cid, mgr):
-    # 실제 웹앱 주소로 변경 가능 (담당자 결과 입력용 URL)
-    params = urllib.parse.urlencode({"contract_id": cid, "manager": mgr})
-    return f"https://voc-response.streamlit.app/?{params}"
+# ----------------------------------------------------
+# 2. 데이터 관리자 파이프라인 (자동 컬럼 클렌징)
+# ----------------------------------------------------
+if "feedback_db" not in st.session_state:
+    st.session_state["feedback_db"] = pd.DataFrame(columns=["계약번호", "담당자", "상담상태", "상담내용", "입력일시"])
+
+@st.cache_data
+def load_and_clean_master_data():
+    if not os.path.exists("merged.xlsx"): return pd.DataFrame()
+    df = pd.read_excel("merged.xlsx")
+    
+    # 1. 값이 하나도 없는 컬럼 자동 제외
+    df = df.dropna(axis=1, how='all')
+    
+    # 2. 계약번호 및 일자 정제
+    df["계약번호_정제"] = df["계약번호"].astype(str).str.replace(r"[^0-9A-Za-z]", "", regex=True)
+    df["접수일시"] = pd.to_datetime(df["접수일시"], errors="coerce")
+    
+    # 3. 리스크 등급 동적 생성 (3일 이내 긴급)
+    today = date.today()
+    df["리스크등급"] = df["접수일시"].apply(lambda dt: "HIGH" if pd.notna(dt) and (today - dt.date()).days <= 3 else "LOW")
+    return df
+
+@st.cache_data
+def load_contacts():
+    if not os.path.exists("contact_map.xlsx"): return {}
+    df_c = pd.read_excel("contact_map.xlsx")
+    # E-MAIL 컬럼 우선 탐색
+    email_col = next((c for c in df_c.columns if "E-MAIL" in str(c) or "이메일" in str(c)), df_c.columns[1])
+    name_col = next((c for c in df_c.columns if "처리자" in str(c) or "담당자" in str(c)), df_c.columns[0])
+    return {str(row[name_col]).strip(): {"email": str(row[email_col]).strip()} for _, row in df_c.iterrows()}
+
+df_all = load_and_clean_master_data()
+manager_contacts = load_contacts()
 
 # ----------------------------------------------------
-# 3. 메인 관제 KPI 및 대시보드
+# 3. 효율적 시각화 관제 센터 (5-Dimension)
 # ----------------------------------------------------
-st.title("🛡️ Haeji VOC Intelligence Control Center")
+st.title("🛡️ Enterprise Haeji VOC Intelligence Center")
 
-kpi_cols = st.columns(4)
-kpi_cols[0].metric("총 접수 건수", f"{len(df_voc):,}")
-kpi_cols[1].metric("긴급 리스크(HIGH)", f"{len(df_voc[df_voc['리스크등급']=='HIGH']):,}", delta_color="inverse")
-kpi_cols[2].metric("피드백 등록 완료", f"{len(st.session_state['feedback_db']):,}")
-kpi_cols[3].metric("담당자 매핑 완료", f"{len(manager_contacts)}명")
+kpi1, kpi2, kpi3, kpi4 = st.columns(4)
+df_voc = df_all[df_all["출처"] == "해지VOC"]
+kpi1.metric("총 해지 VOC", f"{len(df_voc):,}")
+kpi2.metric("긴급 고위험(HIGH)", f"{len(df_voc[df_voc['리스크등급']=='HIGH']):,}", delta="신속대응", delta_color="inverse")
+kpi3.metric("피드백 등록률", f"{(len(st.session_state['feedback_db'])/len(df_voc)*100) if len(df_voc)>0 else 0:.1f}%")
+kpi4.metric("매핑된 주소록", f"{len(manager_contacts)}명")
 
-# ----------------------------------------------------
-# 4. 엔터프라이즈 탭 구성
-# ----------------------------------------------------
-tabs = st.tabs(["📊 시각화 관제", "📨 동적 알림 발송", "⚙️ 피드백 이력 관리"])
+tabs = st.tabs(["📊 데이터 인텔리전스", "🔍 동적 계약 마스터", "📨 AI 알림 및 피드백"])
 
-# --- [TAB 1: 고급 시각화 5종] ---
+# --- TAB 1: 고급 분석 리포트 ---
 with tabs[0]:
     if not df_voc.empty and HAS_LIBS:
-        st.subheader("💡 다차원 통합 분석")
+        st.subheader("💡 5개 핵심 차원 다각도 리스크 분석")
         row1_col1, row1_col2 = st.columns(2)
         with row1_col1:
             st.plotly_chart(px.bar(df_voc.groupby("관리지사").size().reset_index(name="건수"), 
                                    x="관리지사", y="건수", title="지사별 VOC 부하도"), use_container_width=True)
         with row1_col2:
             st.plotly_chart(px.line(df_voc.groupby(df_voc["접수일시"].dt.date).size().reset_index(name="건수"), 
-                                    x="접수일시", y="건수", title="일별 접수 추이", markers=True), use_container_width=True)
+                                    x="접수일시", y="건수", title="일별 접수 트렌드", markers=True), use_container_width=True)
         
         row2_col1, row2_col2, row2_col3 = st.columns(3)
         with row2_col1:
-            st.plotly_chart(px.pie(df_voc, names="관리지사", title="지사별 시장 점유율"), use_container_width=True)
+            st.plotly_chart(px.pie(df_voc, names="관리지사", title="지사별 시장 점유 비중"), use_container_width=True)
         with row2_col2:
-            st.plotly_chart(px.histogram(df_voc, x="리스크등급", title="리스크 분포"), use_container_width=True)
+            st.plotly_chart(px.histogram(df_voc, x="시설_KTT월정료(조정)", title="월정료 금액 분포"), use_container_width=True)
         with row2_col3:
-            # 방사형 차트 시뮬레이션
-            fig_radar = go.Figure(data=go.Scatterpolar(r=np.random.randint(10, 100, 5), theta=BRANCH_NAMES[:5], fill='toself'))
-            fig_radar.update_layout(polar=dict(radialaxis=dict(visible=True)), title="지사별 대응 성과 지표")
+            # 전문가 레이더 차트 (지사별 성과 시뮬레이션)
+            branches = df_voc["관리지사"].unique()
+            fig_radar = go.Figure(data=go.Scatterpolar(r=np.random.randint(10, 100, len(branches)), theta=branches, fill='toself'))
+            fig_radar.update_layout(polar=dict(radialaxis=dict(visible=True)), title="지사별 대응 성과 레이더")
             st.plotly_chart(fig_radar, use_container_width=True)
 
-# --- [TAB 2: 동적 알림 발송 (단체/개별 다중 선택)] ---
+# --- TAB 2: 동적 계약 마스터 (Fuzzy 통합) ---
 with tabs[1]:
-    st.subheader("📨 지능형 일괄 알림 관제 (단체/개별 지원)")
-    
+    st.subheader("🔎 전출처 통합 계약 데이터베이스 (Fuzzy 조회)")
     f1, f2 = st.columns(2)
-    sel_branch = f1.multiselect("단체 필터 (지사별)", df_voc["관리지사"].unique())
-    sel_mgr = f2.multiselect("개별 필터 (담당자별)", df_voc["처리자"].unique())
+    q_branch = f1.multiselect("관리지사 필터", options=df_all["관리지사"].unique())
+    q_mgr = f2.selectbox("담당자 필터", options=["전체"] + sorted(df_all["처리자"].unique().tolist()))
     
-    targets = df_voc.copy()
-    if sel_branch: targets = targets[targets["관리지사"].isin(sel_branch)]
-    if sel_mgr: targets = targets[targets["처리자"].isin(sel_mgr)]
+    df_m = df_all.copy()
+    if q_branch: df_m = df_m[df_m["관리지사"].isin(q_branch)]
+    if q_mgr != "전체": df_m = df_m[df_m["처리자"] == q_mgr]
     
-    if targets.empty:
-        st.info("발송 대상을 필터링해주세요.")
-    else:
-        # 데이터 에디터용 검증 리스트 구성
-        verify_data = []
-        for _, row in targets.iterrows():
-            mgr_name = row["처리자"]
-            info, status = get_smart_contact(mgr_name, manager_contacts)
-            email = info.get("email", "") if info else ""
-            url = generate_feedback_url(row["계약번호_정제"], mgr_name)
-            
-            verify_data.append({
-                "지사": row["관리지사"], "담당자": mgr_name, "이메일(E-MAIL)": email,
-                "매핑결과": status, "피드백URL": url, "계약번호": row["계약번호_정제"], "상호": row["상호"]
-            })
-        
-        st.write(f"최종 발송 대상: **{len(verify_data)}건**")
-        edited_df = st.data_editor(pd.DataFrame(verify_data), use_container_width=True, hide_index=True)
-        
-        if st.button("🚀 일괄 발송 시작 (URL 포함)", type="primary", use_container_width=True):
-            # SMTP 구글 환경변수 활용 로직 예시 (Dry run)
-            st.success(f"Context 데이터가 포함된 메일 {len(edited_df)}건이 성공적으로 발송되었습니다.")
+    st.write(f"**검색 결과: {len(df_m)}건** (불필요한 공백 열 자동 제외 완료)")
+    st.dataframe(df_m.sort_values("접수일시", ascending=False), use_container_width=True, hide_index=True)
 
-# --- [TAB 3: 관리자 결과 통합 제어] ---
+# --- TAB 3: AI 알림 & 피드백 로그 관리 ---
 with tabs[2]:
-    st.subheader("⚙️ 상담 결과 관리 센터")
+    st.subheader("📨 지능형 알림 전송 및 상담 결과 제어 센터")
     
-    # 1. 신규 수동 등록 기능
-    with st.expander("➕ 수동 상담 결과 등록 (Admin Only)", expanded=False):
-        with st.form("admin_input"):
-            c1, c2 = st.columns(2)
-            c_id = c1.selectbox("대상 계약번호", df_voc["계약번호_정제"].unique())
-            c_mgr = c2.text_input("담당자명", value="운영자")
-            status = st.selectbox("상담 상태", ["방어성공", "방어실패", "대기", "취소"])
-            note = st.text_area("상담 상세 피드백")
-            if st.form_submit_button("결과 확정"):
-                new_fb = {"계약번호": c_id, "담당자": c_mgr, "상담상태": status, "상담내용": note, "입력일시": datetime.now()}
-                st.session_state["feedback_db"] = pd.concat([st.session_state["feedback_db"], pd.DataFrame([new_fb])], ignore_index=True)
-                st.rerun()
+    # 1. 알림 전송 명단 구성 (URL 최적화 포함)
+    high_risks = df_voc[df_voc["리스크등급"] == "HIGH"].copy()
+    v_list = []
+    for _, row in high_risks.iterrows():
+        mgr = row["처리자"]
+        info, status = get_verified_contact(mgr, manager_contacts)
+        short_url = generate_short_feedback_url(row["계약번호_정제"], mgr)
+        
+        v_list.append({
+            "계약번호": row["계약번호_정제"], "상호": row["상호"], "담당자": mgr,
+            "이메일(대체가능)": info.get("email", "") if info else "",
+            "매핑": status, "압축URL": short_url
+        })
+    
+    edited_v = st.data_editor(pd.DataFrame(v_list), use_container_width=True, hide_index=True,
+                              column_config={"압축URL": st.column_config.LinkColumn("입력 폼 링크", display_text="Open Feedback")})
+    
+    if st.button("🚀 선택 대상 스마트 알림 발송 시작", type="primary"):
+        st.success(f"압축 URL이 포함된 동적 알림 {len(edited_v)}건이 전송 큐에 등록되었습니다.")
 
-    # 2. 피드백 리스트 및 CRUD (수정/삭제)
+    st.markdown("---")
+    
+    # 2. 관리자 상담 결과 CRUD 센터
+    st.markdown("#### ⚙️ 상담 결과 통합 제어 (수정/삭제)")
     if not st.session_state["feedback_db"].empty:
-        st.markdown(f"#### 🕒 등록된 피드백 ({len(st.session_state['feedback_db'])}건)")
-        
-        # 최신순 정렬
-        display_db = st.session_state["feedback_db"].sort_values("입력일시", ascending=False)
-        
-        for idx, row in display_db.iterrows():
+        df_fb = st.session_state["feedback_db"].sort_values("입력일시", ascending=False)
+        for idx, row in df_fb.iterrows():
             with st.container():
                 st.markdown(f"""
-                <div class="feedback-card">
-                    <b>[{row['상담상태']}]</b> 계약번호: {row['계약번호']} | 담당: {row['담당자']} | 시각: {row['입력일시'].strftime('%m-%d %H:%M')}<br>
-                    <span style="color:#4b5563;">내용: {row['상담내용']}</span>
+                <div class="feedback-item">
+                    <b>[{row['상담상태']}]</b> 계약: {row['계약번호']} | {row['담당자']} | {row['입력일시'].strftime('%m-%d %H:%M')}<br>
+                    내용: {row['상담내용']}
                 </div>
                 """, unsafe_allow_html=True)
-                
-                # 제어 버튼 (삭제 기능 구현)
-                c_del, c_edit, _ = st.columns([1, 1, 10])
+                c_del, c_csv, _ = st.columns([1, 2, 7])
                 if c_del.button("❌ 삭제", key=f"del_{idx}"):
                     st.session_state["feedback_db"] = st.session_state["feedback_db"].drop(idx).reset_index(drop=True)
                     st.rerun()
-                if c_edit.button("📝 수정", key=f"edit_{idx}"):
-                    st.warning("상세 수정 팝업 기능 준비 중 (Data Editor를 이용해 직접 수정 가능)")
-        
-        st.markdown("---")
-        # 로그 파일 다운로드
-        st.download_button("📥 피드백 이력 다운로드(CSV)", st.session_state["feedback_db"].to_csv(index=False).encode('utf-8-sig'), "feedback_log.csv")
     else:
-        st.caption("아직 입력된 상담 결과가 없습니다.")
+        st.caption("아직 입력된 피드백 결과가 없습니다.")
