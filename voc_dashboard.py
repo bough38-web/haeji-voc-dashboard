@@ -139,7 +139,7 @@ with tabs[1]:
     # 담당자 필터 옵션 구성 (정렬된 리스트 앞에 "전체" 추가)
     q_mgr = f2.selectbox("담당자 필터", options=["전체"] + sorted(mgr_list))
     df_m = df_all.copy()
-    if q_branch: df_m = df_m[df_m["관리지사", "관리지사명"].isin(q_branch)]
+    if q_branch: df_m = df_m[df_m["관리지사"].isin(q_branch)]
     if q_mgr != "전체": df_m = df_m[df_m["처리자"] == q_mgr]
     
     st.write(f"**검색 결과: {len(df_m)}건** (불필요한 공백 열 자동 제외 완료)")
