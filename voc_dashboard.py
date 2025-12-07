@@ -15,7 +15,7 @@ except Exception:
     HAS_PLOTLY = False
 
 # ----------------------------------------------------
-# 0. 기본 설정 & 라이트톤 / 반응형 레이아웃 CSS
+# 0. 기본 설정 & 라이트톤 / 반응형 레이아웃 CSSa
 # ----------------------------------------------------
 
 st.set_page_config(page_title="해지 VOC 종합 대시보드", layout="wide")
@@ -565,15 +565,18 @@ def style_risk(df_view: pd.DataFrame):
     return df_view.style.apply(_row_style, axis=1)
 
 # ----------------------------------------------------
-# 10. 사이드바 글로벌 필터
+# 10. 글로벌 필터 — 버튼형 UI + 월정료 10만원 단위 구간 적용
 # ----------------------------------------------------
 st.sidebar.title("🔧 글로벌 필터")
 
+# ========== 1) 접수일자 범위 ==========
 if "접수일시" in df_voc.columns and df_voc["접수일시"].notna().any():
     min_d = df_voc["접수일시"].min().date()
     max_d = df_voc["접수일시"].max().date()
+
+    st.sidebar.markdown("#### 📅 접수일자 범위")
     dr = st.sidebar.date_input(
-        "접수일자 범위",
+        "",
         value=(min_d, max_d),
         min_value=min_d,
         max_value=max_d,
@@ -582,41 +585,132 @@ if "접수일시" in df_voc.columns and df_voc["접수일시"].notna().any():
 else:
     dr = None
 
+st.sidebar.markdown("---")
+
+# ========== 2) 지사 필터 (버튼식) ==========
 branches_all = sort_branch(df_voc["관리지사"].dropna().unique())
-sel_branches = st.sidebar.multiselect(
-    "관리지사(복수 선택)",
+default_branch_selected = st.sidebar.multiselect(
+    "🏢 관리지사 선택",
     options=branches_all,
     default=branches_all,
-    key="global_branches",
+    key="global_branches_btn",
 )
+sel_branches = default_branch_selected
 
-risk_all = ["HIGH", "MEDIUM", "LOW"]
+st.sidebar.markdown("---")
+
+# ========== 3) 리스크 등급 필터 버튼 ==========
+st.sidebar.markdown("#### ⚠ 리스크 등급")
+
+risk_options = ["HIGH", "MEDIUM", "LOW"]
+
 sel_risk = st.sidebar.multiselect(
-    "리스크등급",
-    options=risk_all,
-    default=risk_all,
-    key="global_risk",
+    "",
+    options=risk_options,
+    default=risk_options,
+    key="global_risk_btn",
 )
 
-match_all = ["매칭(O)", "비매칭(X)"]
+st.sidebar.markdown("---")
+
+# ========== 4) 매칭여부 버튼 ==========
+st.sidebar.markdown("#### 🔍 매칭 여부")
+
+match_options = ["매칭(O)", "비매칭(X)"]
+
 sel_match = st.sidebar.multiselect(
-    "매칭여부",
-    options=match_all,
-    default=match_all,
-    key="global_match",
+    "",
+    options=match_options,
+    default=match_options,
+    key="global_match_btn",
 )
+
+st.sidebar.markdown("---")
+
+# ========== 5) 월정료 구간(버튼형) ==========
+st.sidebar.markdown("### 💰 월정료 구간 (10만 단위)")
+
+fee_segments = [
+    "전체",
+    "10만 미만",
+    "10만~20만",
+    "20만~30만",
+    "30만~40만",
+    "40만~50만",
+    "50만 이상",
+]
 
 fee_filter_global = st.sidebar.radio(
-    "월정료 구간(글로벌)",
-    options=["전체", "10만 미만", "10만 이상"],
+    "",
+    options=fee_segments,
     index=0,
-    key="global_fee_band",
+    key="global_fee_btn",
 )
 
 st.sidebar.markdown("---")
 st.sidebar.caption(
-    f"마지막 갱신: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
+    f"🕓 마지막 갱신: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
 )
+
+# ----------------------------------------------------
+# 11. 글로벌 필터 적용 (수정된 월정료 구간 포함)
+# ----------------------------------------------------
+voc_filtered_global = df_voc.copy()
+
+# 날짜 필터
+if dr and isinstance(dr, tuple) and len(dr) == 2:
+    sd, ed = dr
+    voc_filtered_global = voc_filtered_global[
+        (voc_filtered_global["접수일시"] >= pd.to_datetime(sd))
+        & (voc_filtered_global["접수일시"] < pd.to_datetime(ed) + pd.Timedelta(days=1))
+    ]
+
+# 지사 필터
+if sel_branches:
+    voc_filtered_global = voc_filtered_global[
+        voc_filtered_global["관리지사"].isin(sel_branches)
+    ]
+
+# 리스크 필터
+if sel_risk:
+    voc_filtered_global = voc_filtered_global[
+        voc_filtered_global["리스크등급"].isin(sel_risk)
+    ]
+
+# 매칭여부
+if sel_match:
+    voc_filtered_global = voc_filtered_global[
+        voc_filtered_global["매칭여부"].isin(sel_match)
+    ]
+
+# 월정료 구간 적용
+if fee_filter_global != "전체":
+    cond = None
+    if fee_filter_global == "10만 미만":
+        cond = voc_filtered_global["월정료_수치"] < 100000
+
+    elif fee_filter_global == "10만~20만":
+        cond = (voc_filtered_global["월정료_수치"] >= 100000) & (voc_filtered_global["월정료_수치"] < 200000)
+
+    elif fee_filter_global == "20만~30만":
+        cond = (voc_filtered_global["월정료_수치"] >= 200000) & (voc_filtered_global["월정료_수치"] < 300000)
+
+    elif fee_filter_global == "30만~40만":
+        cond = (voc_filtered_global["월정료_수치"] >= 300000) & (voc_filtered_global["월정료_수치"] < 400000)
+
+    elif fee_filter_global == "40만~50만":
+        cond = (voc_filtered_global["월정료_수치"] >= 400000) & (voc_filtered_global["월정료_수치"] < 500000)
+
+    elif fee_filter_global == "50만 이상":
+        cond = voc_filtered_global["월정료_수치"] >= 500000
+
+    if cond is not None:
+        voc_filtered_global = voc_filtered_global[cond]
+
+# 비매칭 세트 생성
+unmatched_global = voc_filtered_global[
+    voc_filtered_global["매칭여부"] == "비매칭(X)"
+].copy()
 
 # ----------------------------------------------------
 # 11. 글로벌 필터 적용
