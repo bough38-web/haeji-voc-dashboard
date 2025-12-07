@@ -129,21 +129,29 @@ with tabs[0]:
             fig_radar = go.Figure(data=go.Scatterpolar(r=np.random.randint(10, 100, len(branches)), theta=branches, fill='toself'))
             fig_radar.update_layout(polar=dict(radialaxis=dict(visible=True)), title="지사별 대응 성과 레이더")
             st.plotly_chart(fig_radar, use_container_width=True)
-
-# --- TAB 2: 동적 계약 마스터 (Fuzzy 통합) ---
+# --- TAB 2: 동적 계약 마스터 ---
 with tabs[1]:
-    st.subheader("🔎 전출처 통합 계약 데이터베이스 (Fuzzy 조회)")
+    st.subheader("🔎 전출처 통합 계약 데이터베이스")
     f1, f2 = st.columns(2)
-    # 결측치를 "미지정"으로 채우고 모든 값을 문자열로 변환한 뒤 리스트화
-    mgr_list = df_all["처리자"].fillna("미지정").astype(str).unique().tolist()
-    # 담당자 필터 옵션 구성 (정렬된 리스트 앞에 "전체" 추가)
-    q_mgr = f2.selectbox("담당자 필터", options=["전체"] + sorted(mgr_list))
-    df_m = df_all.copy()
-    if q_branch: df_m = df_m[df_m["관리지사"].isin(q_branch)]
-    if q_mgr != "전체": df_m = df_m[df_m["처리자"] == q_mgr]
     
-    st.write(f"**검색 결과: {len(df_m)}건** (불필요한 공백 열 자동 제외 완료)")
-    st.dataframe(df_m.sort_values("접수일시", ascending=False), use_container_width=True, hide_index=True)
+    # 1. 여기서 변수명을 'q_branch'로 정확히 정의합니다.
+    q_branch = f1.multiselect("관리지사 필터", options=df_all["관리지사"].unique().tolist())
+    
+    # 2. 담당자 리스트 생성 (TypeError 방지 로직 포함)
+    mgr_list = df_all["처리자"].fillna("미지정").astype(str).unique().tolist()
+    q_mgr = f2.selectbox("담당자 필터", options=["전체"] + sorted(mgr_list))
+    
+    # 3. 데이터 필터링 수행
+    df_m = df_all.copy()
+    
+    # multiselect는 리스트를 반환하므로 리스트가 비어있지 않은지 확인 후 필터링
+    if q_branch: 
+        df_m = df_m[df_m["관리지사"].isin(q_branch)]
+        
+    if q_mgr != "전체": 
+        df_m = df_m[df_m["처리자"].astype(str) == q_mgr]
+    
+    # ... 이후 테이블 출력 로직
 
 # --- TAB 3: AI 알림 & 피드백 로그 관리 ---
 with tabs[2]:
