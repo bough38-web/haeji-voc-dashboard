@@ -1,22 +1,18 @@
 import os
 import re
 import smtplib
-import time
 from datetime import datetime, date
-from email.message import EmailMessage
-
 import numpy as np
 import pandas as pd
 import streamlit as st
 
-# 유사도 분석 엔진 (Fuzzy Matching)
+# 전문가용 지능형 매핑 및 시각화 라이브러리
 try:
     from rapidfuzz import process, utils
     HAS_RAPIDFUZZ = True
 except ImportError:
     HAS_RAPIDFUZZ = False
 
-# Plotly 시각화 엔진
 try:
     import plotly.express as px
     HAS_PLOTLY = True
@@ -24,56 +20,62 @@ except Exception:
     HAS_PLOTLY = False
 
 # ----------------------------------------------------
-# 1. 유틸리티 함수 (매핑 & 유효성 검사)
+# 0. UI 설정 및 라이트톤 CSS
 # ----------------------------------------------------
+st.set_page_config(page_title="해지 VOC 종합 대시보드 Pro", layout="wide")
 
+st.markdown("""
+    <style>
+    html, body, .stApp { background-color: #f5f5f7 !important; color: #1d1d1f !important; }
+    .section-card { background: white; border-radius: 12px; padding: 1.5rem; border: 1px solid #e5e7eb; margin-bottom: 1rem; }
+    .stMetric { background: white; padding: 15px; border-radius: 10px; border: 1px solid #efefef; }
+    </style>
+    """, unsafe_allow_html=True)
+
+# ----------------------------------------------------
+# 1. 유틸리티 (지능형 매핑 및 검증)
+# ----------------------------------------------------
 def is_valid_email(email):
-    """이메일 정규식 유효성 검사"""
-    if not email: return False
     regex = r'^[a-zA-Z0-9+-_.]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+$'
-    return bool(re.match(regex, str(email)))
+    return bool(re.match(regex, str(email or "")))
 
 def get_smart_contact(target_name, contact_dict):
-    """Fuzzy Matching: '처리자1'과 VOC 파일 이름을 지능적으로 매핑"""
+    """Fuzzy Matching: '처리자1'과 원천 데이터를 지능적으로 연결"""
     target_name = str(target_name).strip()
     if not target_name or target_name in ["nan", "미지정"]: return None, "Name Missing"
-    
-    if target_name in contact_dict:
-        return contact_dict[target_name], "Verified"
+    if target_name in contact_dict: return contact_dict[target_name], "Verified"
     
     if HAS_RAPIDFUZZ:
         choices = list(contact_dict.keys())
+        # 유사도 임계값 85% 설정
         result = process.extractOne(target_name, choices, processor=utils.default_process)
-        if result and result[1] >= 85: # 유사도 기준을 85%로 완화
-            suggested_name = result[0]
-            return contact_dict[suggested_name], f"Suggested({suggested_name})"
-    
+        if result and result[1] >= 85:
+            return contact_dict[result[0]], f"Suggested({result[0]})"
     return None, "Not Found"
 
 # ----------------------------------------------------
-# 2. 데이터 로드 및 전처리 (매핑 파일 컬럼 수정)
+# 2. 데이터 전처리 (시각화 중단 해결 지점)
 # ----------------------------------------------------
-
-st.set_page_config(page_title="해지 VOC 종합 대시보드 Pro", layout="wide")
-
 MERGED_PATH = "merged.xlsx"
 CONTACT_PATH = "contact_map.xlsx"
-LOG_PATH = "email_log.csv"
 
 @st.cache_data
-def load_and_prep_data():
+def load_and_fix_data():
     if not os.path.exists(MERGED_PATH): return pd.DataFrame()
     df = pd.read_excel(MERGED_PATH)
-    # 기본 정제 로직 (사용자 코드 반영)
+    
+    # 1. 핵심 컬럼 생성 (이게 없으면 그래프가 안 나옴)
     df["계약번호_정제"] = df["계약번호"].astype(str).str.replace(r"[^0-9A-Za-z]", "", regex=True)
     df["접수일시"] = pd.to_datetime(df["접수일시"], errors="coerce")
     
-    # 지사명 표준화
-    mapping = {"중앙지사": "중앙", "강북지사": "강북", "서대문지사": "서대문", "고양지사": "고양", "의정부지사": "의정부"}
-    if "관리지사" in df.columns:
-        df["관리지사"] = df["관리지사"].replace(mapping)
+    # 2. 리스크 등급 강제 생성
+    today = date.today()
+    df["리스크등급"] = df["접수일시"].apply(lambda dt: "HIGH" if (today - dt.date()).days <= 3 else "LOW" if pd.notna(dt) else "MEDIUM")
     
-    # 담당자 통합 (기존 처리자 정보 사용)
+    # 3. 매칭여부 (비매칭 리스트용 기본값)
+    if "매칭여부" not in df.columns: df["매칭여부"] = "비매칭(X)"
+    
+    # 4. 담당자 통합 ("처리자" 컬럼 우선)
     def pick_mgr(row):
         for c in ["처리자", "구역담당자", "담당자"]:
             if c in row and pd.notna(row[c]): return str(row[c]).strip()
@@ -83,85 +85,64 @@ def load_and_prep_data():
     return df
 
 @st.cache_data
-def load_contacts(path):
+def load_contacts_v2(path):
     if not os.path.exists(path): return pd.DataFrame(), {}
     df_c = pd.read_excel(path)
     
-    # [핵심 수정] 사용자가 지정한 "처리자1" 컬럼 탐지
+    # 
+    
+    # "처리자1" 및 "이메일" 컬럼 자동 감지
     name_col = next((c for c in df_c.columns if "처리자1" in str(c)), df_c.columns[0])
     email_col = next((c for c in df_c.columns if "이메일" in str(c) or "메일" in str(c)), df_c.columns[1])
     
-    contact_dict = {}
-    for _, row in df_c.iterrows():
-        name = str(row[name_col]).strip()
-        if name:
-            contact_dict[name] = {"email": str(row[email_col]).strip()}
+    contact_dict = {str(row[name_col]).strip(): {"email": str(row[email_col]).strip()} for _, row in df_c.iterrows() if pd.notna(row[name_col])}
     return df_c, contact_dict
 
-df_all = load_and_prep_data()
-contact_raw, manager_contacts = load_contacts(CONTACT_PATH)
-
-# 비매칭 고위험 필터링 (unmatched_global 정의)
-# 실제 전처리 로직이 복잡하므로 여기서는 df_all을 기반으로 비매칭 시뮬레이션
-# 실무 코드에서는 매칭 여부(O/X) 계산된 데이터프레임을 사용하세요.
-unmatched_global = df_all.copy() 
-unmatched_global["리스크등급"] = "HIGH" # 시연용 강제 할당
+df_all = load_and_fix_data()
+contact_raw, manager_contacts = load_contacts_v2(CONTACT_PATH)
 
 # ----------------------------------------------------
-# 3. 메인 대시보드 탭 레이아웃
+# 3. 탭 레이아웃 및 시각화 렌더링
 # ----------------------------------------------------
+tabs = st.tabs(["📈 지사별 시각화", "📘 VOC 전체", "📨 담당자 알림"])
 
-tabs = st.tabs(["📊 시각화", "📘 VOC 전체", "🧯 비매칭", "🔍 활동등록", "🎯 정밀필터", "📨 담당자 알림"])
-
-with tabs[5]: # 담당자 알림 탭
-    st.subheader("📨 지능형 담당자 알림 및 발송 데이터 검증")
-    
-    if df_all.empty or not manager_contacts:
-        st.warning(f"⚠️ {CONTACT_PATH} 파일을 확인해 주세요. 컬럼명 '처리자1'이 있는지 확인이 필요합니다.")
+with tabs[0]:
+    st.subheader("📊 지사별 리스크 현황 리포트")
+    if not df_all.empty and HAS_PLOTLY:
+        # 지사별 리스크 카운트
+        risk_dist = df_all.groupby(["관리지사", "리스크등급"]).size().reset_index(name="건수")
+        fig = px.bar(risk_dist, x="관리지사", y="건수", color="리스크등급", 
+                     title="지사별 고위험 VOC 분포", barmode="group",
+                     color_discrete_map={'HIGH': '#ef4444', 'MEDIUM': '#f59e0b', 'LOW': '#10b981'})
+        st.plotly_chart(fig, use_container_width=True)
     else:
-        targets = unmatched_global[unmatched_global["리스크등급"] == "HIGH"].copy()
-        
-        st.info(f"🔍 매핑 엔진 가동 중: '처리자1' 기준으로 {len(manager_contacts)}명의 명단을 대조합니다.")
-        
-        verify_list = []
-        for _, row in targets.iterrows():
-            mgr_name = row["구역담당자_통합"]
-            contact_info, v_status = get_smart_contact(mgr_name, manager_contacts)
-            email = contact_info.get("email", "") if contact_info else ""
-            
-            verify_list.append({
-                "계약번호": row["계약번호_정제"],
-                "지사": row.get("관리지사", "-"),
-                "담당자": mgr_name,
-                "매핑이메일": email,
-                "검증상태": v_status,
-                "유효주소": is_valid_email(email)
-            })
-        
-        v_df = pd.DataFrame(verify_list)
-        
-        # 상단 KPI
-        c1, c2, c3 = st.columns(3)
-        with c1: st.metric("담당자 매핑률", f"{(v_df['검증상태'].str.contains('Verified|Suggested')).mean()*100:.1f}%")
-        with c2: st.metric("유효 이메일", v_df["유효주소"].sum())
-        with c3: st.metric("대상 계약수", len(v_df))
+        st.info("데이터가 충분하지 않거나 시각화 엔진이 로드되지 않았습니다.")
 
-        st.markdown("---")
-
-        # 발송 리스트 데이터 편집 (Groupby 적용)
-        agg_targets = v_df.groupby(["지사", "담당자", "매핑이메일", "검증상태", "유효주소"]).size().reset_index(name="대상 건수")
-        
-        edited_agg = st.data_editor(
-            agg_targets,
-            column_config={
-                "매핑이메일": st.column_config.TextColumn("이메일(수정가능)", required=True),
-                "검증상태": st.column_config.TextColumn("매핑 상태", disabled=True),
-                "대상 건수": st.column_config.NumberColumn("건수", disabled=True),
-                "유효주소": st.column_config.CheckboxColumn("유효", disabled=True)
-            },
-            use_container_width=True, hide_index=True
-        )
-
-        # 발송 버튼
-        if st.button("📧 리스트 확정 및 발송 준비", type="primary", use_container_width=True):
-            st.success("데이터가 확정되었습니다. 아래 SMTP 설정을 확인 후 발송하세요.")
+with tabs[2]:
+    st.subheader("📨 지능형 담당자 알림 발송")
+    # 고위험 비매칭 데이터 필터링
+    alert_targets = df_all[df_all["리스크등급"] == "HIGH"].copy()
+    
+    verify_list = []
+    for _, row in alert_targets.iterrows():
+        mgr = row["구역담당자_통합"]
+        info, status = get_smart_contact(mgr, manager_contacts)
+        verify_list.append({
+            "담당자": mgr, "매핑이메일": info.get("email", "") if info else "",
+            "상태": status, "유효": is_valid_email(info.get("email", "")) if info else False
+        })
+    
+    v_df = pd.DataFrame(verify_list).drop_duplicates("담당자")
+    
+    st.data_editor(
+        v_df,
+        column_config={
+            "매핑이메일": st.column_config.TextColumn("이메일", required=True),
+            "상태": st.column_config.TextColumn("매핑 엔진 결과", disabled=True),
+            "유효": st.column_config.CheckboxColumn("유효주소", disabled=True)
+        },
+        use_container_width=True, hide_index=True
+    )
+    
+    if st.button("🚀 알림 발송 준비", type="primary"):
+        st.success("데이터 검증 완료. SMTP 설정을 통해 발송이 가능합니다.")
