@@ -760,288 +760,291 @@ tab_viz, tab_all, tab_unmatched, tab_drill, tab_filter, tab_alert = st.tabs(
 )
 
 # ====================================================
-# TAB VIZ — 지사 / 담당자 시각화 (리뉴얼 버전)
+# TAB VIZ — 지사 / 담당자 시각화 (리뉴얼 + 개선 버전)
 # ====================================================
 with tab_viz:
-    st.subheader("📊 지사 / 담당자별 비매칭 리스크 현황 (리뉴얼)")
+    st.subheader("📊 지사 / 담당자별 비매칭 리스크 현황 (리뉴얼 개선)")
 
     if unmatched_global.empty:
         st.info("현재 조건에서 비매칭(X) 데이터가 없습니다.")
+        st.stop()
+
+    # --------------------------------------------------
+    # 0) TAB 전용 CSS 강제 적용 (UI 깨짐 방지)
+    # --------------------------------------------------
+    st.markdown("""
+        <style>
+        .branch-grid {
+            display: grid;
+            grid-template-columns: repeat(4, minmax(0, 1fr));
+            gap: 14px;
+        }
+        @media (max-width:1200px){
+            .branch-grid { grid-template-columns: repeat(2, 1fr); }
+        }
+        @media (max-width:700px){
+            .branch-grid { grid-template-columns: repeat(1, 1fr); }
+        }
+
+        .branch-card {
+            background: #ffffff;
+            border-radius: 14px;
+            padding: 1rem;
+            border: 1px solid #e5e7eb;
+            box-shadow: 0 3px 8px rgba(0,0,0,0.05);
+            transition: 0.12s ease;
+        }
+        .branch-card:hover {
+            transform: translateY(-4px);
+            box-shadow: 0 8px 18px rgba(0,0,0,0.08);
+        }
+        .branch-card-header {
+            font-size: 1.05rem;
+            font-weight: 600;
+            margin-bottom: 4px;
+            color: #111827;
+        }
+        .branch-card-sub {
+            font-size: 0.82rem;
+            margin-top: 4px;
+            color: #374151;
+        }
+
+        .badge-high {
+            color: #fff;
+            background: #ef4444;
+            padding: 2px 7px;
+            border-radius: 7px;
+            font-size: 0.75rem;
+        }
+        .badge-medium {
+            color: #fff;
+            background: #f59e0b;
+            padding: 2px 7px;
+            border-radius: 7px;
+            font-size: 0.75rem;
+        }
+        .badge-low {
+            color: #fff;
+            background: #3b82f6;
+            padding: 2px 7px;
+            border-radius: 7px;
+            font-size: 0.75rem;
+        }
+        </style>
+    """, unsafe_allow_html=True)
+
+    # =========================================================
+    # 1) 지사 요약 카드 생성
+    # =========================================================
+    clean_df = unmatched_global.dropna(subset=["관리지사"])
+    branch_stats = (
+        clean_df.groupby("관리지사")
+        .agg(
+            계약수=("계약번호_정제", "nunique"),
+            HIGH=("리스크등급", lambda s: (s == "HIGH").sum()),
+            MEDIUM=("리스크등급", lambda s: (s == "MEDIUM").sum()),
+            LOW=("리스크등급", lambda s: (s == "LOW").sum()),
+        )
+    )
+
+    branch_stats = branch_stats.reindex(BRANCH_ORDER).dropna(how="all")
+
+    st.markdown("### 🏢 지사별 비매칭 요약")
+
+    if branch_stats.empty:
+        st.info("비매칭 지사가 없습니다.")
     else:
-        # ---------- 1) 지사 요약 카드 ----------
-        branch_stats = (
-            unmatched_global
-            .groupby("관리지사")
-            .agg(
-                계약수=("계약번호_정제", "nunique"),
-                HIGH=("리스크등급", lambda s: (s == "HIGH").sum()),
-                MEDIUM=("리스크등급", lambda s: (s == "MEDIUM").sum()),
-                LOW=("리스크등급", lambda s: (s == "LOW").sum()),
-            )
+        html = '<div class="branch-grid">'
+        for branch, row in branch_stats.iterrows():
+            html += f"""
+            <div class="branch-card">
+                <div class="branch-card-header">{branch}</div>
+                <div class="branch-card-sub">계약 {int(row['계약수'])}건</div>
+
+                <span class="badge-high">HIGH {int(row['HIGH'])}</span>&nbsp;
+                <span class="badge-medium">MED {int(row['MEDIUM'])}</span>&nbsp;
+                <span class="badge-low">LOW {int(row['LOW'])}</span>
+            </div>
+            """
+        html += "</div>"
+        st.markdown(html, unsafe_allow_html=True)
+
+    st.markdown("---")
+
+    # =========================================================
+    # 2) 상단 필터 (지사 → 담당자 동적)
+    # =========================================================
+    f1, f2, f3 = st.columns([1.2, 1.2, 1])
+
+    # 지사 필터
+    branch_opts = ["전체"] + sort_branch(clean_df["관리지사"].unique())
+    sel_branch = f1.selectbox("지사 선택", branch_opts)
+
+    df_mgr_scope = clean_df.copy()
+    if sel_branch != "전체":
+        df_mgr_scope = df_mgr_scope[df_mgr_scope["관리지사"] == sel_branch]
+
+    # 담당자 필터
+    mgr_list = (
+        df_mgr_scope["구역담당자_통합"]
+        .dropna()
+        .astype(str)
+        .replace("nan", "")
+        .unique()
+        .tolist()
+    )
+    mgr_list = sorted([m for m in mgr_list if m.strip() != ""])
+    sel_mgr = f2.selectbox("담당자 선택 (리스크 상세보기)", ["(전체)"] + mgr_list)
+
+    # KPI 요약
+    scope_df = df_mgr_scope.copy()
+    if sel_mgr != "(전체)":
+        scope_df = scope_df[scope_df["구역담당자_통합"].astype(str) == sel_mgr]
+
+    total_scope = scope_df["계약번호_정제"].nunique()
+    f3.metric("선택 범위 계약 수", f"{total_scope:,}")
+
+    st.caption(
+        f"HIGH { (scope_df['리스크등급']=='HIGH').sum() }건 / "
+        f"MEDIUM { (scope_df['리스크등급']=='MEDIUM').sum() }건 / "
+        f"LOW { (scope_df['리스크등급']=='LOW').sum() }건"
+    )
+
+    st.markdown("---")
+
+    # =========================================================
+    # 3) 지사 리스크 스택 바 차트
+    # =========================================================
+    st.markdown("### 🧱 지사별 리스크 분포 (STACKED BAR)")
+
+    risk_by_branch = (
+        clean_df.groupby(["관리지사", "리스크등급"])["계약번호_정제"]
+        .nunique()
+        .reset_index()
+    )
+    risk_by_branch["관리지사"] = pd.Categorical(
+        risk_by_branch["관리지사"], categories=BRANCH_ORDER, ordered=True
+    )
+    risk_by_branch["리스크등급"] = pd.Categorical(
+        risk_by_branch["리스크등급"], categories=["HIGH", "MEDIUM", "LOW"], ordered=True
+    )
+
+    risk_by_branch = risk_by_branch.sort_values(["관리지사", "리스크등급"])
+
+    if HAS_PLOTLY and not risk_by_branch.empty:
+        fig_stack = px.bar(
+            risk_by_branch,
+            x="관리지사",
+            y="계약번호_정제",
+            color="리스크등급",
+            barmode="stack",
         )
-        branch_stats = branch_stats.loc[branch_stats.index.isin(BRANCH_ORDER)]
-        branch_stats = branch_stats.reindex(BRANCH_ORDER).dropna(how="all")
-
-        st.markdown("### 🏢 지사별 비매칭 요약")
-
-        if branch_stats.empty:
-            st.info("비매칭 지사가 없습니다.")
-        else:
-            html = '<div class="branch-grid">'
-            for branch, row in branch_stats.iterrows():
-                tot = int(row["계약수"])
-                h = int(row["HIGH"])
-                m = int(row["MEDIUM"])
-                l = int(row["LOW"])
-                html += f"""
-                <div class="branch-card">
-                    <div class="branch-card-header">
-                        <span>{branch}</span>
-                        <span class="branch-card-sub">계약 {tot}건</span>
-                    </div>
-                    <div class="branch-card-sub">
-                        <span class="badge-high">HIGH {h}</span>
-                        &nbsp;
-                        <span class="badge-medium">MED {m}</span>
-                        &nbsp;
-                        <span class="badge-low">LOW {l}</span>
-                    </div>
-                </div>
-                """
-            html += "</div>"
-            st.markdown(html, unsafe_allow_html=True)
-
-        st.markdown("---")
-
-        # ---------- 2) 상단 필터 (지사 / 담당자) ----------
-        f1, f2, f3 = st.columns([1.2, 1.2, 1])
-
-        # 지사 선택
-        b_opts = ["전체"] + sort_branch(unmatched_global["관리지사"].dropna().unique())
-        sel_b_viz = f1.selectbox(
-            "지사 선택",
-            options=b_opts,
-            index=0,
-            key="viz_branch",
+        fig_stack.update_layout(
+            height=360,
+            margin=dict(l=10, r=10, t=40, b=40),
+            xaxis_title="지사",
+            yaxis_title="계약 수",
+            legend_title="리스크",
         )
+        st.plotly_chart(fig_stack, use_container_width=True)
+    else:
+        pivot = risk_by_branch.pivot(
+            index="관리지사", columns="리스크등급", values="계약번호_정제"
+        ).fillna(0)
+        st.bar_chart(pivot, use_container_width=True, height=360)
 
-        tmp_for_mgr = unmatched_global.copy()
-        if sel_b_viz != "전체":
-            tmp_for_mgr = tmp_for_mgr[tmp_for_mgr["관리지사"] == sel_b_viz]
+    st.markdown("---")
 
-        mgr_list_viz = (
-            tmp_for_mgr["구역담당자_통합"]
-            .dropna()
-            .astype(str)
-            .replace("nan", "")
-            .unique()
-            .tolist()
-        )
-        mgr_list_viz = sorted([m for m in mgr_list_viz if m])
-        sel_mgr_viz = f2.selectbox(
-            "담당자 선택 (리스크 상세보기)",
-            options=["(전체)"] + mgr_list_viz,
-            index=0,
-            key="viz_mgr",
-        )
+    # =========================================================
+    # 4) 담당자 TOP15 + 전체 리스크 도넛
+    # =========================================================
+    g1, g2 = st.columns(2)
 
-        # 선택 범위에 대한 요약 KPI
-        scope_data = unmatched_global.copy()
-        if sel_b_viz != "전체":
-            scope_data = scope_data[scope_data["관리지사"] == sel_b_viz]
-        if sel_mgr_viz != "(전체)":
-            scope_data = scope_data[scope_data["구역담당자_통합"].astype(str) == sel_mgr_viz]
+    # ---- 담당자 TOP15 ----
+    with g1:
+        st.markdown("#### 👤 담당자별 비매칭 TOP 15")
+        scope_df2 = clean_df if sel_branch == "전체" else clean_df[clean_df["관리지사"] == sel_branch]
 
-        total_scope = scope_data["계약번호_정제"].nunique()
-        high_scope = (scope_data["리스크등급"] == "HIGH").sum()
-        med_scope = (scope_data["리스크등급"] == "MEDIUM").sum()
-        low_scope = (scope_data["리스크등급"] == "LOW").sum()
-
-        f3.metric("선택 범위 계약 수", f"{total_scope:,}")
-        st.caption(
-            f"선택된 조건 기준 HIGH {high_scope}건 / MEDIUM {med_scope}건 / LOW {low_scope}건"
-        )
-
-        st.markdown("---")
-
-        # ---------- 3) 지사별 리스크 스택 바 (전체) ----------
-        st.markdown("### 🧱 지사별 리스크 분포 (STACKED BAR)")
-
-        risk_by_branch = (
-            unmatched_global
-            .groupby(["관리지사", "리스크등급"])["계약번호_정제"]
+        top15 = (
+            scope_df2.groupby("구역담당자_통합")["계약번호_정제"]
             .nunique()
-            .reset_index()
+            .sort_values(ascending=False)
+            .head(15)
         )
-        risk_by_branch = risk_by_branch[risk_by_branch["관리지사"].isin(BRANCH_ORDER)]
-        risk_by_branch["관리지사"] = pd.Categorical(
-            risk_by_branch["관리지사"], categories=BRANCH_ORDER, ordered=True
-        )
-        risk_by_branch["리스크등급"] = pd.Categorical(
-            risk_by_branch["리스크등급"], categories=["HIGH", "MEDIUM", "LOW"], ordered=True
-        )
-        risk_by_branch = risk_by_branch.sort_values(["관리지사", "리스크등급"])
 
-        if HAS_PLOTLY and not risk_by_branch.empty:
-            fig_stack = px.bar(
-                risk_by_branch,
-                x="관리지사",
+        if HAS_PLOTLY:
+            fig_top = px.bar(
+                top15.reset_index(),
+                x="구역담당자_통합",
                 y="계약번호_정제",
-                color="리스크등급",
-                barmode="stack",
-                text="계약번호_정제",
+                text="계약번호_정제"
             )
-            fig_stack.update_traces(textposition="outside")
-            fig_stack.update_layout(
-                height=360,
-                margin=dict(l=10, r=10, t=40, b=20),
-                xaxis_title="관리지사",
-                yaxis_title="비매칭 계약 수(유니크)",
+            fig_top.update_traces(textposition="outside")
+            fig_top.update_layout(
+                height=330,
+                xaxis_tickangle=-40,
+                margin=dict(l=10, r=10, t=40, b=70),
             )
-            st.plotly_chart(fig_stack, use_container_width=True)
+            st.plotly_chart(fig_top, use_container_width=True)
         else:
-            # Fallback - pivot 후 bar_chart
-            pivot = risk_by_branch.pivot(
-                index="관리지사", columns="리스크등급", values="계약번호_정제"
-            ).fillna(0)
-            st.bar_chart(pivot, use_container_width=True, height=360)
+            st.bar_chart(top15, use_container_width=True, height=330)
 
-        st.markdown("---")
+    # ---- 전체 리스크 도넛 ----
+    with g2:
+        st.markdown("#### 🍩 전체 비매칭 리스크 비율")
 
-        # ---------- 4) 담당자 TOP 15 + 리스크 도넛 ----------
-        g1, g2 = st.columns(2)
+        rc = clean_df["리스크등급"].value_counts().reindex(["HIGH", "MEDIUM", "LOW"]).fillna(0)
 
-        with g1:
-            st.markdown("#### 👤 담당자별 비매칭 TOP 15 (유니크 계약)")
+        if HAS_PLOTLY:
+            fig_pie = px.pie(
+                rc.reset_index(),
+                names="index",
+                values="리스크등급",
+                hole=0.45,
+            )
+            fig_pie.update_layout(height=330, margin=dict(l=10, r=10, t=40, b=10))
+            st.plotly_chart(fig_pie, use_container_width=True)
+        else:
+            st.bar_chart(rc, use_container_width=True, height=330)
 
-            if sel_b_viz != "전체":
-                mgr_data_all = unmatched_global[unmatched_global["관리지사"] == sel_b_viz]
-            else:
-                mgr_data_all = unmatched_global.copy()
+    st.markdown("---")
 
-            mc = (
-                mgr_data_all.groupby("구역담당자_통합")["계약번호_정제"]
+    # =========================================================
+    # 5) 일자별 추이 + 담당자 리스크 차트
+    # =========================================================
+    t1, t2 = st.columns(2)
+
+    with t1:
+        st.markdown("#### 📈 일별 비매칭 계약 추이")
+        if "접수일시" in clean_df:
+            trend = (
+                clean_df.assign(접수일=clean_df["접수일시"].dt.date)
+                .groupby("접수일")["계약번호_정제"]
                 .nunique()
-                .rename("비매칭계약수")
-                .sort_values(ascending=False)
             )
-            mc = mc[mc.index.astype(str).str.strip() != ""].head(15)
-
-            if HAS_PLOTLY and not mc.empty:
-                fig2 = px.bar(
-                    mc.reset_index(),
-                    x="구역담당자_통합",
-                    y="비매칭계약수",
-                    text="비매칭계약수",
-                )
-                fig2.update_traces(textposition="outside")
-                fig2.update_layout(
-                    height=340,
-                    margin=dict(l=10, r=10, t=40, b=90),
-                    xaxis_title="담당자",
-                    yaxis_title="비매칭 계약 수",
-                    xaxis_tickangle=-45,
-                )
-                st.plotly_chart(fig2, use_container_width=True)
+            if HAS_PLOTLY:
+                fig_trend = px.line(trend.reset_index(), x="접수일", y="계약번호_정제")
+                fig_trend.update_layout(height=260)
+                st.plotly_chart(fig_trend, use_container_width=True)
             else:
-                st.bar_chart(mc, use_container_width=True, height=340)
+                st.line_chart(trend)
 
-        with g2:
-            st.markdown("#### 🍩 비매칭 리스크 비율 (전체)")
+    with t2:
+        st.markdown("#### 🌐 선택 담당자 리스크 분포")
+        if sel_mgr == "(전체)":
+            st.info("담당자를 선택하면 표시됩니다.")
+        else:
+            mgr_df = clean_df[clean_df["구역담당자_통합"].astype(str) == sel_mgr]
+            rc_mgr = mgr_df["리스크등급"].value_counts().reindex(["HIGH", "MEDIUM", "LOW"]).fillna(0)
 
-            rc = (
-                unmatched_global["리스크등급"]
-                .value_counts()
-                .reindex(["HIGH", "MEDIUM", "LOW"])
-                .fillna(0)
-            )
-            if HAS_PLOTLY and rc.sum() > 0:
-                rc_df = rc.reset_index()
-                rc_df.columns = ["리스크등급", "건수"]
-                fig_pie = px.pie(
-                    rc_df,
-                    names="리스크등급",
-                    values="건수",
-                    hole=0.45,
-                )
-                fig_pie.update_layout(
-                    height=340,
-                    margin=dict(l=10, r=10, t=40, b=10),
-                )
-                st.plotly_chart(fig_pie, use_container_width=True)
+            if HAS_PLOTLY:
+                fig_mgr = px.bar(rc_mgr.reset_index(), x="index", y="리스크등급", text="리스크등급")
+                fig_mgr.update_traces(textposition="outside")
+                fig_mgr.update_layout(height=260)
+                st.plotly_chart(fig_mgr, use_container_width=True)
             else:
-                st.bar_chart(rc, use_container_width=True, height=340)
-
-        st.markdown("---")
-
-        # ---------- 5) 일자별 추이 + 선택 담당자 리스크 ----------
-        t1, t2 = st.columns(2)
-
-        with t1:
-            st.markdown("#### 📈 일별 비매칭 계약 추이 (유니크 계약 기준)")
-            if "접수일시" in unmatched_global.columns:
-                trend = (
-                    unmatched_global.assign(접수일=unmatched_global["접수일시"].dt.date)
-                    .groupby("접수일")["계약번호_정제"]
-                    .nunique()
-                    .rename("비매칭계약수")
-                    .sort_index()
-                )
-                if HAS_PLOTLY and not trend.empty:
-                    fig4 = px.line(
-                        trend.reset_index(),
-                        x="접수일",
-                        y="비매칭계약수",
-                    )
-                    fig4.update_layout(
-                        height=260,
-                        margin=dict(l=10, r=10, t=30, b=20),
-                        xaxis_title="접수일",
-                        yaxis_title="비매칭 계약 수",
-                    )
-                    st.plotly_chart(fig4, use_container_width=True)
-                else:
-                    st.line_chart(trend, use_container_width=True, height=260)
-            else:
-                st.info("접수일시 컬럼이 없어 추이 시각화가 불가능합니다.")
-
-        with t2:
-            st.markdown("#### 🌐 선택 담당자 리스크 분포")
-
-            if sel_mgr_viz == "(전체)":
-                st.info("담당자를 선택하면 리스크 분포가 표시됩니다.")
-            else:
-                mgr_data = unmatched_global[
-                    unmatched_global["구역담당자_통합"].astype(str) == sel_mgr_viz
-                ]
-                if mgr_data.empty:
-                    st.info("선택한 담당자의 비매칭 데이터가 없습니다.")
-                else:
-                    rc_mgr = (
-                        mgr_data["리스크등급"]
-                        .value_counts()
-                        .reindex(["HIGH", "MEDIUM", "LOW"])
-                        .fillna(0)
-                    )
-                    if HAS_PLOTLY and rc_mgr.sum() > 0:
-                        mgr_df = rc_mgr.reset_index()
-                        mgr_df.columns = ["리스크등급", "건수"]
-                        fig_mgr = px.bar(
-                            mgr_df,
-                            x="리스크등급",
-                            y="건수",
-                            text="건수",
-                        )
-                        fig_mgr.update_traces(textposition="outside")
-                        fig_mgr.update_layout(
-                            height=260,
-                            margin=dict(l=10, r=10, t=30, b=20),
-                            xaxis_title="리스크등급",
-                            yaxis_title="계약 수",
-                        )
-                        st.plotly_chart(fig_mgr, use_container_width=True)
-                    else:
-                        st.bar_chart(rc_mgr, use_container_width=True, height=260)
+                st.bar_chart(rc_mgr)
 
 # ====================================================
 # TAB ALL — VOC 전체 (계약번호 기준 요약)
