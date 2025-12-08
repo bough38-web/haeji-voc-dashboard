@@ -1124,20 +1124,17 @@ with tab_branch_admin_report:
         )
 
 # ------------------------------------------------
-# 🔹 적층 세로 막대그래프 + 애니메이션 지원
+# 🔹 적층 세로 막대그래프 (Plotly)
 # ------------------------------------------------
-def force_stacked_bar_animated(
-    df: pd.DataFrame,
-    x: str,
-    y_cols: list[str],
-    anim_col: str,
-    height: int = 280
-):
+def force_stacked_bar(df: pd.DataFrame, x: str, y_cols: list[str], height: int = 280):
     """
-    Plotly 적층 세로 막대그래프 (애니메이션 적용)
+    Plotly 적용된 적층 세로 막대그래프
+    df: DataFrame
+    x: x축 컬럼명
+    y_cols: 적층할 수치 컬럼 리스트 ["HIGH","MEDIUM","LOW"]
     """
-    if df.empty or not y_cols or anim_col not in df.columns:
-        st.info("애니메이션을 표시할 데이터가 부족합니다.")
+    if df.empty or not y_cols:
+        st.info("표시할 데이터가 없습니다.")
         return
 
     if HAS_PLOTLY:
@@ -1145,23 +1142,17 @@ def force_stacked_bar_animated(
             df,
             x=x,
             y=y_cols,
-            animation_frame=anim_col,
             barmode="stack",
             text_auto=True,
             height=height,
         )
         fig.update_layout(
             margin=dict(l=40, r=20, t=40, b=40),
-            transition={"duration": 500},
         )
         st.plotly_chart(fig, use_container_width=True)
     else:
-        st.warning("Plotly가 설치되어야 애니메이션 그래프를 표시할 수 있습니다.")
+        st.warning("Plotly가 설치되어야 적층 막대그래프를 표시할 수 있습니다.")
 
-
-# ----------------------------------------------------
-# TAB VIZ — 지사 / 담당자 시각화 (완성본)
-# ----------------------------------------------------
 
 # ------------------------------------------------
 # 🔹 적층 세로 막대그래프 (순수 기능)
@@ -1397,7 +1388,149 @@ with tab_viz:
     st.plotly_chart(fig, use_container_width=True)
 
 
+# ----------------------------------------------------
+# TAB VIZ — 지사 / 담당자 시각화
+# ----------------------------------------------------
+with tab_viz:
 
+    # ---------------------------
+    # 기본 데이터 보호
+    # ---------------------------
+    viz_base = unmatched_global.copy()
+    if "리스크등급" not in viz_base.columns:
+        viz_base["리스크등급"] = "LOW"
+
+    st.subheader("📊 지사 / 담당자별 비매칭 리스크 현황")
+
+    if viz_base.empty:
+        st.info("현재 조건에서 비매칭(X) 데이터가 없습니다.")
+        st.stop()
+
+    # ---------------------------
+    # 필터 UI
+    # ---------------------------
+    st.markdown("""
+        <div style="background:#ffffff;border:1px solid #e5e7eb;padding:14px 20px;border-radius:12px;margin-bottom:18px;box-shadow:0 2px 6px rgba(0,0,0,0.05);">
+            <b>🎛️ 필터</b><br>지사와 담당자를 선택하면 아래 모든 시각화가 즉시 갱신됩니다.
+        </div>
+    """, unsafe_allow_html=True)
+
+    colA, colB = st.columns(2)
+
+    # 지사 선택
+    b_opts = ["전체"] + sort_branch(viz_base["관리지사"].dropna().unique())
+    sel_b_viz = colA.pills("🏢 지사 선택", b_opts, selection_mode="single", default="전체")
+    sel_b_viz = sel_b_viz[0] if isinstance(sel_b_viz, list) else sel_b_viz
+
+    # 담당자 선택
+    tmp_mgr = viz_base.copy()
+    if sel_b_viz != "전체":
+        tmp_mgr = tmp_mgr[tmp_mgr["관리지사"] == sel_b_viz]
+
+    mgr_list_viz = sorted([m for m in tmp_mgr["구역담당자_통합"].astype(str).unique() if m not in ["", "nan"]])
+    sel_mgr_viz = colB.selectbox("👤 담당자 선택", ["(전체)"] + mgr_list_viz)
+
+    # ---------------------------
+    # 필터 적용 데이터
+    # ---------------------------
+    viz_filtered = viz_base.copy()
+    if sel_b_viz != "전체":
+        viz_filtered = viz_filtered[viz_filtered["관리지사"] == sel_b_viz]
+    if sel_mgr_viz != "(전체)":
+        viz_filtered = viz_filtered[viz_filtered["구역담당자_통합"].astype(str) == sel_mgr_viz]
+
+    if viz_filtered.empty:
+        st.info("선택한 조건에서 비매칭(X) 데이터가 없습니다.")
+        st.stop()
+
+    # ======================================================
+    # 1) 지사별 비매칭 계약 — 적층 막대
+    # ======================================================
+    st.markdown("### 🧱 지사별 비매칭 계약 수 (리스크 적층)")
+
+    branch_risk = (
+        viz_filtered.groupby(["관리지사", "리스크등급"])["계약번호_정제"]
+        .nunique()
+        .reset_index(name="계약수")
+    )
+
+    if not branch_risk.empty:
+        pivot_branch = branch_risk.pivot(index="관리지사", columns="리스크등급", values="계약수").fillna(0)
+        pivot_branch = pivot_branch.reindex(BRANCH_ORDER).fillna(0)
+        cols = [c for c in ["HIGH", "MEDIUM", "LOW"] if c in pivot_branch.columns]
+
+        force_stacked_bar(pivot_branch.reset_index(), "관리지사", cols, height=270)
+
+    # ======================================================
+    # 2) 담당자별 TOP15 — 적층 막대
+    # ======================================================
+    c2a, c2b = st.columns(2)
+
+    with c2a:
+        st.markdown("### 👤 담당자 TOP 15 (리스크 적층)")
+        mgr_risk = (
+            viz_filtered.groupby(["구역담당자_통합", "리스크등급"])["계약번호_정제"]
+            .nunique()
+            .reset_index(name="계약수")
+        )
+        if not mgr_risk.empty:
+            pivot_mgr = mgr_risk.pivot(index="구역담당자_통합", columns="리스크등급", values="계약수").fillna(0)
+            cols_mgr = [c for c in ["HIGH", "MEDIUM", "LOW"] if c in pivot_mgr.columns]
+            pivot_mgr["총계"] = pivot_mgr[cols_mgr].sum(axis=1)
+            pivot_mgr = pivot_mgr.sort_values("총계", ascending=False).head(15).drop(columns=["총계"])
+            force_stacked_bar(pivot_mgr.reset_index(), "구역담당자_통합", cols_mgr, height=300)
+
+    # ======================================================
+    # 3) 전체 리스크 분포 — 단일 적층 막대
+    # ======================================================
+    with c2b:
+        st.markdown("### 🔥 리스크 등급 분포")
+        rc = viz_filtered["리스크등급"].value_counts().reindex(["HIGH","MEDIUM","LOW"]).fillna(0)
+        risk_df = pd.DataFrame({"구분": ["전체"], "HIGH":[rc["HIGH"]], "MEDIUM":[rc["MEDIUM"]], "LOW":[rc["LOW"]]})
+        force_stacked_bar(risk_df, "구분", ["HIGH","MEDIUM","LOW"], height=300)
+
+    # ======================================================
+    # 4) 일별 추이
+    # ======================================================
+    st.markdown("---")
+    st.markdown("### 📈 일별 비매칭 추이")
+
+    if "접수일시" in viz_filtered.columns:
+        trend = (
+            viz_filtered.assign(접수일=viz_filtered["접수일시"].dt.date)
+            .groupby("접수일")["계약번호_정제"].nunique().reset_index()
+        )
+        fig = px.line(trend, x="접수일", y="계약번호_정제", markers=True)
+        st.plotly_chart(fig, use_container_width=True)
+
+    # ======================================================
+    # 5) 담당자 레이더 차트
+    # ======================================================
+    if sel_mgr_viz != "(전체)" and HAS_PLOTLY:
+        mgr_data = viz_filtered[viz_filtered["구역담당자_통합"] == sel_mgr_viz]
+        radar = mgr_data["리스크등급"].value_counts().reindex(["HIGH","MEDIUM","LOW"]).fillna(0)
+        radar_df = pd.DataFrame({"리스크": ["HIGH","MEDIUM","LOW"], "계약수": radar.values})
+        fig_radar = px.line_polar(radar_df, r="계약수", theta="리스크", line_close=True)
+        st.plotly_chart(fig_radar, use_container_width=True)
+
+    # ======================================================
+    # 6) Heatmap (지사 × 담당자)
+    # ======================================================
+    st.markdown("### 🔥 지사-담당자 Heatmap")
+
+    heat_df = (
+        viz_filtered.groupby(["관리지사", "구역담당자_통합"])["계약번호_정제"]
+        .nunique()
+        .reset_index(name="계약수")
+    )
+
+    fig_hm = px.imshow(
+        heat_df.pivot(index="관리지사", columns="구역담당자_통합", values="계약수").fillna(0),
+        color_continuous_scale="Blues",
+        aspect="auto",
+        labels=dict(color="계약수"),
+    )
+    st.plotly_chart(fig_hm, use_container_width=True)
 
 
 
