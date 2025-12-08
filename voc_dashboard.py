@@ -779,11 +779,11 @@ with tab_viz:
     # 지사 선택
     # -------------------------
     b_opts = ["전체"] + sort_branch(unmatched_global["관리지사"].dropna().unique())
-      sel_b_viz = colA.pills(
+    sel_b_viz = colA.pills(
         "🏢 지사 선택",
         options=b_opts,
         selection_mode="single",
-        default="전체",     # 👈 기본값: 전체
+        default="전체",
         key="viz_branch",
     )
     sel_b_viz = sel_b_viz[0] if isinstance(sel_b_viz, list) else sel_b_viz
