@@ -1354,7 +1354,6 @@ if {"관리지사", "구역담당자_통합", "계약번호_정제"}.issubset(vi
         color_continuous_scale="Blues",
     )
     st.plotly_chart(fig_tree, use_container_width=True)
-
 # ------------------------------------------------------
 # 🔸 3. 히스토그램 (월정료 / 경과일)
 # ------------------------------------------------------
@@ -1443,6 +1442,164 @@ if "리스크등급" in viz_filtered.columns:
 
         st.markdown("#### 🔍 최다 빈도 단어 TOP 50")
         force_bar_chart(freq_df, "단어", "빈도", height=350)
+
+# ------------------------------------------------------------
+# 공통: 지사 색상 테마 설정
+# ------------------------------------------------------------
+branch_color_map = {
+    "강릉": "#1f77b4",
+    "강북": "#ff7f0e",
+    "고양": "#2ca02c",
+    "남양주": "#d62728",
+    "서대문": "#9467bd",
+    "원주": "#8c564b",
+    "의정부": "#e377c2",
+    "중앙": "#7f7f7f",
+    "기타": "#bcbd22",
+}
+
+st.markdown("### 🎛 산점도 필터 옵션")
+
+risk_filter = st.multiselect(
+    "리스크 등급 선택",
+    ["HIGH", "MEDIUM", "LOW"],
+    default=["HIGH", "MEDIUM", "LOW"],
+)
+
+mgr_search = st.text_input("담당자 검색어 입력 (부분검색 가능)")
+
+scatter_df = viz_filtered.copy()
+scatter_df = scatter_df[scatter_df["리스크등급"].isin(risk_filter)]
+
+if mgr_search:
+    scatter_df = scatter_df[
+        scatter_df["구역담당자_통합"].astype(str).str.contains(mgr_search)
+    ]
+
+show_labels = st.checkbox("버블 위에 담당자 이름 표시", value=False)
+
+st.markdown("### 🔵 고급 산점도 (지사 · 담당자 · 계약규모)")
+
+# 버블 크기 선택
+size_option = st.selectbox(
+    "버블 크기 기준",
+    ["계약건수", "월정료_수치", "경과일수"],
+    index=0,
+)
+
+if size_option == "계약건수":
+    temp = scatter_df.groupby(
+        ["관리지사", "구역담당자_통합"]
+    )["계약번호_정제"].nunique().reset_index()
+    temp.rename(columns={"계약번호_정제": "bubble_size"}, inplace=True)
+    scatter_df = scatter_df.merge(temp, on=["관리지사", "구역담당자_통합"], how="left")
+    size_col = "bubble_size"
+else:
+    size_col = size_option
+
+fig = px.scatter(
+    scatter_df,
+    x="관리지사",
+    y="구역담당자_통합",
+    size=size_col,
+    color="관리지사",
+    hover_data=["계약번호_정제", "월정료_수치", "경과일수", "리스크등급"],
+    color_discrete_map=branch_color_map,
+    opacity=0.8,
+)
+
+# 라벨 표시 옵션
+if show_labels:
+    fig.update_traces(text=scatter_df["구역담당자_통합"], textposition="top center")
+
+fig.update_layout(
+    height=600,
+    title="📌 지사 · 담당자별 계약규모 산점도 (확장형)",
+)
+st.plotly_chart(fig, use_container_width=True)
+
+st.markdown("### 📦 경과일수 박스플롯 (담당자별 지연 분석)")
+
+if "경과일수" in viz_filtered.columns:
+    fig_box = px.box(
+        viz_filtered,
+        x="구역담당자_통합",
+        y="경과일수",
+        color="관리지사",
+        color_discrete_map=branch_color_map,
+        title="담당자별 경과일수 분포 (지연 위험도 분석)",
+    )
+    fig_box.update_layout(height=550)
+    st.plotly_chart(fig_box, use_container_width=True)
+else:
+    st.info("경과일수 데이터가 없어 박스플롯을 표시할 수 없습니다.")
+
+st.markdown("### 🌳 Treemap (지사 → 담당자 → 리스크)")
+
+tree_df = (
+    viz_filtered
+    .groupby(["관리지사", "구역담당자_통합", "리스크등급"])["계약번호_정제"]
+    .nunique()
+    .reset_index(name="계약수")
+)
+
+fig_tree = px.treemap(
+    tree_df,
+    path=["관리지사", "구역담당자_통합", "리스크등급"],
+    values="계약수",
+    color="관리지사",
+    color_discrete_map=branch_color_map,
+)
+st.plotly_chart(fig_tree, use_container_width=True)
+
+def ai_voc_risk_predict(row):
+    text = " ".join([
+        str(row.get("등록내용", "")),
+        str(row.get("처리내용", "")),
+        str(row.get("해지상세", "")),
+    ]).lower()
+
+    # 기본값
+    reason = "미분류"
+    risk = "LOW"
+
+    # 규칙 기반 기본 분류
+    if any(k in text for k in ["비싸", "요금", "부담", "가격"]):
+        reason, risk = "경제적 사정", "MEDIUM"
+    if any(k in text for k in ["불만", "항의", "문의 많음", "불친절"]):
+        reason, risk = "서비스 불만", "HIGH"
+    if any(k in text for k in ["타사", "경쟁사", "이동"]):
+        reason, risk = "경쟁사 이동", "MEDIUM"
+
+    # 고급 모델 확장 가능 부분 (OpenAI/LLM)
+    # 여기서는 placeholder
+    # ex) gpt_model.predict(text)
+
+    return reason, risk
+
+st.markdown("### 🤖 AI 기반 VOC 위험군 자동 분석")
+
+ai_df = viz_filtered.copy()
+ai_df["AI_사유"], ai_df["AI_리스크"] = zip(*ai_df.apply(ai_voc_risk_predict, axis=1))
+
+ai_summary = ai_df["AI_리스크"].value_counts()
+
+fig_ai = px.bar(
+    ai_summary,
+    title="AI 추론 리스크 분포",
+    labels={"value": "건수", "index": "AI 리스크"},
+    text_auto=True,
+)
+st.plotly_chart(fig_ai, use_container_width=True)
+
+
+
+
+
+
+
+
+
 
 # ----------------------------------------------------
 # TAB ALL — VOC 전체 (계약번호 기준 요약)
