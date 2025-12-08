@@ -110,11 +110,6 @@ if st.session_state["login_type"] is None:
 LOGIN_TYPE = st.session_state["login_type"]
 LOGIN_USER = st.session_state["login_user"]
 
-# 예: TAB VIZ 호출 부분
-with st.tabs(["예시"])[0]:
-    # dummy data
-    bc = pd.DataFrame({"관리지사": ["A","B"], "비매칭계약수":[5,3]})
-    force_bar_chart(bc, "관리지사", "비매칭계약수", height=260)
 
 
 import os
