@@ -900,7 +900,7 @@ with tab_branch_admin_report:
 
         st.markdown("### 📋 지사 전체 비매칭 리스트")
         st.dataframe(
-            df_branch[df_branch["매칭여여"] == "비매칭(X)"][display_cols],
+            df_branch[df_branch["매칭"] == "비매칭(X)"][display_cols],
             use_container_width=True,
             height=450,
         )
