@@ -591,6 +591,147 @@ df_voc[["경과일수", "리스크등급"]] = df_voc.apply(
     lambda r: pd.Series(compute_risk(r)), axis=1
 )
 
+def infer_cancel_reason(row):
+    text_parts = []
+    for col in ["해지상세", "VOC유형소", "등록내용"]:
+        if col in row and pd.notna(row[col]):
+            text_parts.append(str(row[col]))
+    full_text = " ".join(text_parts)
+    t = full_text.replace(" ", "").lower()
+
+    # 경제적 사정
+    econ = ["경제", "사정", "매출감소", "경영악화", "매출하락", "어려움", "고정비", "비용절감"]
+    if any(k in t for k in econ):
+        return "경제적 사정"
+
+    # 품질/장애
+    quality = ["장애", "고장", "불량", "끊김", "속도", "느림", "품질", "오류"]
+    if any(k in t for k in quality):
+        return "품질/장애 불만"
+
+    # 가격/요금 불만
+    price = ["비싸", "요금", "가격", "단가", "인상", "인하", "할인요청"]
+    if any(k in t for k in price):
+        return "요금/가격 불만"
+
+    # 서비스/응대 불만
+    svc = ["응대", "기사", "설치", "지연", "불친절", "안와요", "연락안옴"]
+    if any(k in t for k in svc):
+        return "서비스/응대 불만"
+
+    # 경쟁사 이동
+    comp = ["경쟁사", "타사", "다른회사", "이동", "옮김"]
+    if any(k in t for k in comp):
+        return "경쟁사/타사 이동"
+
+    if full_text.strip():
+        return "기타(텍스트 있음)"
+    return "기타(정보 부족)"
+
+def recommend_retention_policy(row):
+    reason = row.get("AI_해지사유", "")
+    risk = row.get("리스크등급", "LOW")
+    fee = row.get("월정료_수치", np.nan)
+    retp = row.get("리텐션P", np.nan)  # 없으면 NaN 유지
+
+    # 월정료 티어
+    if pd.notna(fee):
+        if fee < 50000:
+            fee_tier = "LOW"
+        elif fee < 150000:
+            fee_tier = "MID"
+        else:
+            fee_tier = "HIGH"
+    else:
+        fee_tier = "UNKNOWN"
+
+    # 리텐션P 티어
+    if pd.notna(retp):
+        if retp >= 80:
+            p_tier = "HIGH"
+        elif retp >= 50:
+            p_tier = "MID"
+        else:
+            p_tier = "LOW"
+    else:
+        p_tier = "UNKNOWN"
+
+    primary = ""  # 추천1
+    backup = ""   # 추천2
+    comment = ""  # 상담 가이드
+
+    # ----------------------
+    # 경제적 사정
+    # ----------------------
+    if reason == "경제적 사정":
+        if risk == "HIGH":
+            if p_tier in ["HIGH", "MID"]:
+                primary = "3개월간 월정료 30% 인하"
+                backup = "2개월 유예 + 20% 인하"
+                comment = "고객 재정 부담을 즉시 줄여줄 수 있는 인하/유예 정책을 우선 제안하세요."
+            else:
+                primary = "2개월간 20% 인하"
+                backup = "1개월 유예 + 10% 인하"
+                comment = "리텐션 여력이 낮아 무리한 인하보다는 중간 수준 인하를 제안하세요."
+        elif risk == "MEDIUM":
+            primary = "2개월간 10~20% 인하"
+            backup = "1개월 유예"
+            comment = "중간 리스크로, 단기간 인하와 유예 조합이 효과적입니다."
+        else:
+            primary = "1개월 유예 또는 10% 인하"
+            backup = "서비스 혜택/가치 재설명 중심 설득"
+            comment = "리스크가 낮으므로 소폭 혜택 + 설득 위주 접근이 적절합니다."
+
+    # ----------------------
+    # 품질/장애
+    # ----------------------
+    elif reason == "품질/장애 불만":
+        primary = "무상 점검 + 1개월 요금감면"
+        backup = "품질 모니터링 강화 및 장애 시 우선 출동 약속"
+        comment = "장애 원인 설명과 함께 사후 관리 약속이 핵심입니다."
+
+    # ----------------------
+    # 가격/요금 불만
+    # ----------------------
+    elif reason == "요금/가격 불만":
+        primary = "요금제 재구성(저가 요금안 제시) + 소폭 할인"
+        backup = "옵션/부가서비스 정리로 총액 절감안 제시"
+        comment = "가격 민감 고객에게는 상품 구조 변경 + 소폭 인하가 효과적입니다."
+
+    # ----------------------
+    # 서비스/응대 불만
+    # ----------------------
+    elif reason == "서비스/응대 불만":
+        primary = "정식 사과 + 담당자 변경 + 소정의 보상(1개월 감면 등)"
+        backup = "전담 관리 채널/담당자 지정"
+        comment = "신뢰 회복과 응대 품질 개선 메시지를 중심으로 설득하세요."
+
+    # ----------------------
+    # 경쟁사 이동
+    # ----------------------
+    elif reason == "경쟁사/타사 이동":
+        primary = "자사 강점/차별점 설명 + 적정 수준 혜택 제시"
+        backup = "장기고객/충성고객 대상 추가 혜택 제안"
+        comment = "과도한 할인보다는 차별화 포인트 + 적정 혜택 조합이 중요합니다."
+
+    # ----------------------
+    # 기타
+    # ----------------------
+    else:
+        primary = "서비스 가치/필요성 설명 중심 유지 설득"
+        backup = "고객 상황에 맞춘 맞춤형 조건 협의"
+        comment = "사유가 뚜렷하지 않아, 대화를 통해 니즈를 다시 파악하는 것이 필요합니다."
+
+    return {
+        "primary_action": primary,
+        "backup_action": backup,
+        "comment": comment,
+        "reason": reason,
+        "risk": risk,
+        "retp_tier": p_tier,
+        "fee_tier": fee_tier,
+    }
+
 # 매칭여부
 df_voc["매칭여부"] = df_voc["계약번호_정제"].apply(
     lambda x: "매칭(O)" if x in other_union else "비매칭(X)"
@@ -1391,6 +1532,7 @@ with tab_all:
             "경과일수",
             "매칭여부",
             "접수건수",
+            "AI_해지사유",
             "설치주소_표시",
             fee_raw_col if fee_raw_col is not None else None,
             "계약상태(중)",
@@ -1758,6 +1900,55 @@ with tab_drill:
                         f"💰 {fee_raw_col}: {str(base_info.get(fee_raw_col, ''))}"
                     )
 
+                st.markdown(f"### 🔎 선택된 계약번호: `{sel_cn}`")
+
+    if base_info is not None:
+        info_col1, info_col2, info_col3 = st.columns(3)
+        info_col1.metric("상호", str(base_info.get("상호", "")))
+        info_col2.metric("관리지사", str(base_info.get("관리지사", "")))
+        info_col3.metric(
+            "구역담당자",
+            str(
+                base_info.get(
+                    "구역담당자_통합", base_info.get("처리자", "")
+                )
+            ),
+        )
+
+        m2_1, m2_2, m2_3 = st.columns(3)
+        m2_1.metric("VOC 접수건수", f"{len(voc_hist):,}건")
+        m2_2.metric("리스크등급", str(base_info.get("리스크등급", "")))
+        m2_3.metric("매칭여부", str(base_info.get("매칭여부", "")))
+
+        st.caption(f"📍 설치주소: {str(base_info.get('설치주소_표시', ''))}")
+        if fee_raw_col is not None:
+            st.caption(
+                f"💰 {fee_raw_col}: {str(base_info.get(fee_raw_col, ''))}"
+            )
+
+        # 🔹 3번: AI 기반 방어 정책 추천 블록
+        st.markdown("### 🤖 AI 기반 방어 정책 추천")
+
+        # 방어정책 계산 (리텐션P 컬럼이 없으면 NaN으로 처리됨)
+        rec = recommend_retention_policy(base_info)
+
+        st.markdown(f"- **추론된 해지 사유:** `{rec['reason']}`")
+        st.markdown(
+            f"- **리스크 등급:** `{rec['risk']}` / "
+            f"**리텐션P 티어:** `{rec['retp_tier']}` / "
+            f"**월정료 티어:** `{rec['fee_tier']}`"
+        )
+
+        st.markdown("#### ✅ 1차 권장 정책")
+        st.success(rec["primary_action"])
+
+        st.markdown("#### 🔄 대안 정책")
+        st.info(rec["backup_action"])
+
+        st.markdown("#### 💬 상담 시 활용 가이드")
+        st.write(rec["comment"])
+
+    st.markdown("---")
             st.markdown("---")
 
             c_left, c_right = st.columns(2)
