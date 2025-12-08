@@ -609,26 +609,6 @@ sel_match = st.sidebar.pills(
     key="filter_match_btn",
 )
 
-# 리스크 등급 필터
-risk_all = ["HIGH", "MEDIUM", "LOW"]
-sel_risk = st.sidebar.pills(
-    "⚠ 리스크등급",
-    options=risk_all,
-    selection_mode="multi",
-    default=risk_all,
-    key="filter_risk_btn",
-)
-
-# 매칭여부
-match_all = ["매칭(O)", "비매칭(X)"]
-sel_match = st.sidebar.pills(
-    "🔍 매칭여부",
-    options=match_all,
-    selection_mode="multi",
-    default=match_all,
-    key="filter_match_btn",
-)
-
 # 월정료 구간 버튼 (10만원 단위)
 fee_bands = [
     "전체",
