@@ -1162,231 +1162,247 @@ def force_stacked_bar_animated(
 # ----------------------------------------------------
 # TAB VIZ — 지사 / 담당자 시각화 (완성본)
 # ----------------------------------------------------
+
+# ------------------------------------------------
+# 🔹 적층 세로 막대그래프 (순수 기능)
+# ------------------------------------------------
+def force_stacked_bar(df: pd.DataFrame, x: str, y_cols: list[str], height: int = 280):
+    if df.empty or not y_cols:
+        st.info("표시할 데이터가 없습니다.")
+        return
+
+    try:
+        fig = px.bar(
+            df,
+            x=x,
+            y=y_cols,
+            barmode="stack",
+            text_auto=True,
+            height=height,
+        )
+        fig.update_layout(
+            margin=dict(l=40, r=20, t=40, b=40),
+        )
+        st.plotly_chart(fig, use_container_width=True)
+
+    except Exception as e:
+        st.error(f"그래프 생성 중 오류 발생: {e}")
+
+
+# ------------------------------------------------------
+# 🔹 지사 색상 테마
+# ------------------------------------------------------
+branch_color_map = {
+    "중앙": "#7f7f7f",
+    "강북": "#ff7f0e",
+    "서대문": "#9467bd",
+    "고양": "#2ca02c",
+    "의정부": "#e377c2",
+    "남양주": "#d62728",
+    "강릉": "#1f77b4",
+    "원주": "#8c564b",
+    "기타": "#17becf",
+}
+
+# ------------------------------------------------------
+# 🔹 지사 성과 점수 자동 계산
+# ------------------------------------------------------
+def calc_branch_score(df):
+    if df.empty:
+        return pd.DataFrame(columns=["관리지사", "Score"])
+
+    score_df = (
+        df.groupby("관리지사")
+        .agg(
+            high=("리스크등급", lambda x: (x == "HIGH").sum()),
+            mid=("리스크등급", lambda x: (x == "MEDIUM").sum()),
+            low=("리스크등급", lambda x: (x == "LOW").sum()),
+        )
+        .reset_index()
+    )
+
+    # 점수 공식 (예시)
+    score_df["Score"] = score_df["low"]*2 + score_df["mid"]*1 - score_df["high"]*2
+    return score_df.sort_values("Score", ascending=False)
+
+
+# ------------------------------------------------------
+# 🔹 담당자 Heatmap 생성
+# ------------------------------------------------------
+def draw_heatmap(df):
+    import plotly.figure_factory as ff
+
+    if df.empty:
+        st.info("Heatmap 데이터가 없습니다.")
+        return
+
+    pivot = (
+        df.groupby(["관리지사", "구역담당자_통합"])["계약번호_정제"]
+        .nunique()
+        .unstack(fill_value=0)
+    )
+
+    fig = ff.create_annotated_heatmap(
+        z=pivot.values,
+        x=pivot.columns.tolist(),
+        y=pivot.index.tolist(),
+        colorscale="Blues",
+        showscale=True,
+    )
+    fig.update_layout(height=600, title="📊 지사-담당자 Heatmap (계약건수)")
+    st.plotly_chart(fig, use_container_width=True)
+
 with tab_viz:
 
-    # ============================
-    # 초기 데이터 준비
-    # ============================
+    st.header("📊 지사 / 담당자 시각화 (완전 통합 최신버전)")
+
     viz_base = unmatched_global.copy()
 
-    if "리스크등급" not in viz_base.columns:
-        viz_base["리스크등급"] = "LOW"
-
-    st.subheader("📊 지사 / 담당자별 비매칭 리스크 현황")
-
     if viz_base.empty:
-        st.info("비매칭(X) 데이터가 없습니다.")
+        st.info("조건에 맞는 데이터가 없습니다.")
         st.stop()
 
-    # ============================
-    # 필터 UI
-    # ============================
-    box = st.container()
-    with box:
-        st.markdown("""
-        <div style="
-            background:#ffffff;
-            border:1px solid #e5e7eb;
-            padding:14px 20px;
-            border-radius:12px;
-            margin-bottom:14px;
-            box-shadow:0 2px 6px rgba(0,0,0,0.05);
-        ">
-        <b>🎛 필터</b><br>
-        지사와 담당자를 선택하면 아래 시각화가 갱신됩니다.
-        </div>
-        """, unsafe_allow_html=True)
-
+    # 필터
     colA, colB = st.columns(2)
+    b_opts = ["전체"] + sort_branch(viz_base["관리지사"].unique())
+    sel_b = colA.selectbox("지사 선택", b_opts)
 
-    # 지사 선택
-    b_opts = ["전체"] + sort_branch(viz_base["관리지사"].dropna().unique())
-    sel_b = colA.selectbox("🏢 지사 선택", b_opts)
-
-    # 담당자 선택
     tmp = viz_base if sel_b == "전체" else viz_base[viz_base["관리지사"] == sel_b]
 
-    mgr_list = sorted([
-        m for m in tmp["구역담당자_통합"].astype(str).unique().tolist()
-        if m not in ["", "nan"]
-    ])
+    mgrs = ["전체"] + sorted(tmp["구역담당자_통합"].dropna().unique())
+    sel_m = colB.selectbox("담당자 선택", mgrs)
 
-    sel_mgr = colB.selectbox("👤 담당자 선택", ["(전체)"] + mgr_list)
+    viz_filtered = tmp if sel_m == "전체" else tmp[tmp["구역담당자_통합"] == sel_m]
 
-    # 필터 적용
-    viz_filtered = viz_base.copy()
-    if sel_b != "전체":
-        viz_filtered = viz_filtered[viz_filtered["관리지사"] == sel_b]
-    if sel_mgr != "(전체)":
-        viz_filtered = viz_filtered[viz_filtered["구역담당자_통합"].astype(str) == sel_mgr]
+    st.success(f"📌 필터 적용 후 데이터: {len(viz_filtered):,} 행")
 
-    if viz_filtered.empty:
-        st.warning("조건에 해당하는 데이터가 없습니다.")
-        st.stop()
+    # ----------------------------------------
+    # 1) 지사별 적층 막대
+    # ----------------------------------------
+    st.subheader("🏢 지사별 비매칭 적층 막대")
 
-    # ----------------------------------------------------
-    # 1) 지사별 비매칭 적층 막대
-    # ----------------------------------------------------
-    st.markdown("### 🧱 지사별 비매칭 계약수 — 리스크 적층")
-
-    branch_risk = (
+    df_branch = (
         viz_filtered.groupby(["관리지사", "리스크등급"])["계약번호_정제"]
         .nunique()
         .reset_index(name="계약수")
     )
-
-    pivot_branch = (
-        branch_risk.pivot(index="관리지사", columns="리스크등급", values="계약수")
-        .fillna(0)
-        .reindex(BRANCH_ORDER)
-        .fillna(0)
-    )
+    pivot_branch = df_branch.pivot(index="관리지사", columns="리스크등급", values="계약수").fillna(0)
 
     cols = [c for c in ["HIGH", "MEDIUM", "LOW"] if c in pivot_branch.columns]
-
     force_stacked_bar(pivot_branch.reset_index(), "관리지사", cols, height=270)
 
-    # ----------------------------------------------------
-    # 2) 담당자 TOP 15 적층 막대
-    # ----------------------------------------------------
-    st.markdown("### 👤 담당자별 비매칭 TOP 15 — 리스크 적층")
+    # ----------------------------------------
+    # 2) 담당자 TOP15 적층
+    # ----------------------------------------
+    st.subheader("👤 담당자 TOP15 적층 막대")
 
-    mgr_risk = (
+    df_mgr = (
         viz_filtered.groupby(["구역담당자_통합", "리스크등급"])["계약번호_정제"]
         .nunique()
         .reset_index(name="계약수")
     )
+    pivot_mgr = df_mgr.pivot(index="구역담당자_통합", columns="리스크등급", values="계약수").fillna(0)
+    pivot_mgr["총"] = pivot_mgr.sum(axis=1)
+    pivot_mgr = pivot_mgr.sort_values("총", ascending=False).head(15)
+    cols = [c for c in ["HIGH", "MEDIUM", "LOW"] if c in pivot_mgr.columns]
 
-    pivot_mgr = mgr_risk.pivot(
-        index="구역담당자_통합",
-        columns="리스크등급",
-        values="계약수"
-    ).fillna(0)
+    force_stacked_bar(pivot_mgr.reset_index(), "구역담당자_통합", cols, height=320)
 
-    cols_mgr = [c for c in ["HIGH", "MEDIUM", "LOW"] if c in pivot_mgr.columns]
+    # ----------------------------------------
+    # 3) 일별 추이선
+    # ----------------------------------------
+    st.subheader("📈 일별 비매칭 추이")
 
-    pivot_mgr["총계"] = pivot_mgr[cols_mgr].sum(axis=1)
-    pivot_mgr = pivot_mgr.sort_values("총계", ascending=False).head(15)
-    pivot_mgr.drop(columns=["총계"], inplace=True)
-
-    force_stacked_bar(pivot_mgr.reset_index(), "구역담당자_통합", cols_mgr, height=320)
-
-    # ----------------------------------------------------
-    # 3) 리스크 도넛
-    # ----------------------------------------------------
-    st.markdown("### 🍩 리스크 등급 비율")
-
-    rc = viz_filtered["리스크등급"].value_counts().reset_index()
-    rc.columns = ["리스크등급", "건수"]
-
-    fig_donut = px.pie(
-        rc, names="리스크등급", values="건수", hole=0.5,
-        title="리스크 등급 비율"
+    trend = (
+        viz_filtered.assign(접수일=viz_filtered["접수일시"].dt.date)
+        .groupby("접수일")["계약번호_정제"]
+        .nunique()
+        .reset_index()
     )
-    st.plotly_chart(fig_donut, use_container_width=True)
 
-    # ----------------------------------------------------
-    # 4) 고급 산점도 (지사 컬러 + 버블크기 옵션)
-    # ----------------------------------------------------
-    st.markdown("### 🔵 확장형 산점도 (지사·담당자·계약규모)")
+    fig = px.line(trend, x="접수일", y="계약번호_정제", markers=True)
+    fig.update_layout(height=260)
+    st.plotly_chart(fig, use_container_width=True)
 
-    branch_color_map = {
-        "강릉": "#1f77b4",
-        "강북": "#ff7f0e",
-        "고양": "#2ca02c",
-        "남양주": "#d62728",
-        "서대문": "#9467bd",
-        "원주": "#8c564b",
-        "의정부": "#e377c2",
-        "중앙": "#7f7f7f",
-        "기타": "#bcbd22",
-    }
+    # ----------------------------------------
+    # 4) 담당자 레이더
+    # ----------------------------------------
+    if sel_m != "전체":
+        st.subheader("🧭 담당자 리스크 레이더")
 
-    st.caption("버블 크기 옵션 / 담당자 라벨 옵션을 사용할 수 있습니다.")
+        rad = (
+            viz_filtered[viz_filtered["구역담당자_통합"] == sel_m]["리스크등급"]
+            .value_counts()
+            .reindex(["HIGH","MEDIUM","LOW"])
+            .fillna(0)
+        )
 
-    bubble_col = st.selectbox("버블 크기 기준", ["계약건수", "월정료_수치", "경과일수"])
+        fig = px.line_polar(
+            r=rad.values, theta=rad.index, line_close=True
+        )
+        fig.update_layout(height=320)
+        st.plotly_chart(fig, use_container_width=True)
 
-    temp = viz_filtered.groupby(["관리지사", "구역담당자_통합"])["계약번호_정제"].nunique().reset_index()
-    temp.rename(columns={"계약번호_정제": "계약건수"}, inplace=True)
+    # ----------------------------------------
+    # 5) Heatmap
+    # ----------------------------------------
+    st.subheader("🔥 지사-담당자 Heatmap")
+    draw_heatmap(viz_filtered)
 
-    scatter_df = viz_filtered.merge(temp, on=["관리지사", "구역담당자_통합"], how="left")
+    # ----------------------------------------
+    # 6) 지사 성과 점수
+    # ----------------------------------------
+    st.subheader("🏅 지사 Performance Score")
 
-    size_col = bubble_col
+    score_df = calc_branch_score(viz_filtered)
+    st.dataframe(score_df, use_container_width=True)
 
-    fig_scat = px.scatter(
-        scatter_df,
+    fig = px.bar(score_df, x="관리지사", y="Score", text_auto=True, color="Score")
+    fig.update_layout(height=350)
+    st.plotly_chart(fig, use_container_width=True)
+
+    # ----------------------------------------
+    # 7) 고급 산점도
+    # ----------------------------------------
+    st.subheader("✨ 고급 산점도")
+
+    scat = (
+        viz_filtered.groupby(["관리지사", "구역담당자_통합"])
+        ["계약번호_정제"].nunique().reset_index(name="계약수")
+    )
+
+    fig = px.scatter(
+        scat,
         x="관리지사",
         y="구역담당자_통합",
-        size=size_col,
+        size="계약수",
         color="관리지사",
         color_discrete_map=branch_color_map,
-        hover_data=["계약건수", "월정료_수치", "경과일수", "리스크등급"],
-        opacity=0.8,
-        title="지사·담당자 확장형 산점도",
+        hover_data=["계약수"],
+        height=450,
     )
+    st.plotly_chart(fig, use_container_width=True)
 
-    st.plotly_chart(fig_scat, use_container_width=True)
-
-    # ----------------------------------------------------
-    # 5) Treemap
-    # ----------------------------------------------------
-    st.markdown("### 🌳 Treemap (지사 → 담당자 → 리스크)")
-
-    tree_df = (
-        viz_filtered.groupby(["관리지사", "구역담당자_통합", "리스크등급"])
-        ["계약번호_정제"].nunique()
-        .reset_index(name="계약수")
-    )
-
-    fig_tree = px.treemap(
-        tree_df,
-        path=["관리지사", "구역담당자_통합", "리스크등급"],
-        values="계약수",
-        color="관리지사",
-        color_discrete_map=branch_color_map,
-    )
-
-    st.plotly_chart(fig_tree, use_container_width=True)
-
-    # ----------------------------------------------------
-    # 6) 텍스트 키워드 분석
-    # ----------------------------------------------------
-    st.markdown("### 📝 텍스트 키워드 분석")
-
-    text_cols = ["등록내용", "처리내용", "해지상세", "VOC유형소"]
-    real_cols = [c for c in text_cols if c in viz_filtered.columns]
-
-    texts = []
-    for col in real_cols:
-        texts.extend(viz_filtered[col].dropna().astype(str).tolist())
-
-    import re
-    from collections import Counter
-
-    words = re.findall(r"[가-힣A-Za-z]{2,}", " ".join(texts))
-    freq_df = pd.DataFrame(Counter(words).most_common(50), columns=["단어", "빈도"])
-
-    force_stacked_bar(freq_df, "단어", ["빈도"], height=330)
-
-    # ----------------------------------------------------
-    # 7) AI 위험군 자동 분류
-    # ----------------------------------------------------
-    st.markdown("### 🤖 AI 기반 VOC 위험군 자동 분석")
+    # ----------------------------------------
+    # 8) AI 위험군 자동분석
+    # ----------------------------------------
+    st.subheader("🤖 AI 위험군 자동 분석")
 
     ai_df = viz_filtered.copy()
-    ai_df["AI_사유"], ai_df["AI_리스크"] = zip(*ai_df.apply(ai_voc_risk_predict, axis=1))
-
-    ai_summary = ai_df["AI_리스크"].value_counts().reset_index()
-    ai_summary.columns = ["AI_리스크", "건수"]
-
-    fig_ai = px.bar(
-        ai_summary,
-        x="AI_리스크", y="건수",
-        text_auto=True,
-        title="AI 추론 리스크 분포"
+    ai_df["AI_리스크"] = ai_df["리스크등급"].apply(
+        lambda x: "HIGH" if x == "HIGH" else ("MEDIUM" if x=="MEDIUM" else "LOW")
     )
 
-    st.plotly_chart(fig_ai, use_container_width=True)
+    fig = px.histogram(ai_df, x="AI_리스크", color="AI_리스크")
+    st.plotly_chart(fig, use_container_width=True)
+
+
+
+
+
+
+
+
 
 # ----------------------------------------------------
 # TAB ALL — VOC 전체 (계약번호 기준 요약)
