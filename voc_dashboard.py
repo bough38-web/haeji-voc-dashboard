@@ -1154,6 +1154,122 @@ with tab_viz:
             fig_radar.update_layout(height=320)
             st.plotly_chart(fig_radar, use_container_width=True)
 
+# ======================================================
+# 8) 추가 분석 그래프 (산점도 / 트리맵 / 히스토그램 / 박스플롯 / 도넛차트)
+# ======================================================
+st.markdown("---")
+st.subheader("📐 추가 분석 그래프")
+
+# ------------------------------------------------------
+# 🔸 1. 산점도 (월정료 vs 경과일)
+# ------------------------------------------------------
+if "월정료_수치" in viz_filtered.columns and "경과일" in viz_filtered.columns:
+    st.markdown("### 🔹 산점도 (월정료 vs 경과일)")
+    fig_scat = px.scatter(
+        viz_filtered,
+        x="월정료_수치",
+        y="경과일",
+        color="리스크등급",
+        hover_data=["관리지사", "구역담당자_통합", "계약번호_정제"],
+        title="월정료 대비 경과일 산점도",
+    )
+    st.plotly_chart(fig_scat, use_container_width=True)
+
+# ------------------------------------------------------
+# 🔸 2. 트리맵 (지사 → 담당자 → 계약수)
+# ------------------------------------------------------
+if {"관리지사", "구역담당자_통합", "계약번호_정제"}.issubset(viz_filtered.columns):
+    st.markdown("### 🔹 트리맵 (지사 → 담당자 → 계약수)")
+
+    tree_df = (
+        viz_filtered.groupby(["관리지사", "구역담당자_통합"])
+        .agg(계약수=("계약번호_정제", "nunique"))
+        .reset_index()
+    )
+
+    fig_tree = px.treemap(
+        tree_df,
+        path=["관리지사", "구역담당자_통합"],
+        values="계약수",
+        title="지사-담당자 구조 트리맵",
+        color="계약수",
+        color_continuous_scale="Blues",
+    )
+    st.plotly_chart(fig_tree, use_container_width=True)
+
+# ------------------------------------------------------
+# 🔸 3. 히스토그램 (월정료 / 경과일)
+# ------------------------------------------------------
+if "월정료_수치" in viz_filtered.columns:
+    st.markdown("### 🔹 월정료 분포 (히스토그램)")
+    fig_fee_hist = px.histogram(
+        viz_filtered,
+        x="월정료_수치",
+        nbins=30,
+        title="월정료 분포",
+    )
+    st.plotly_chart(fig_fee_hist, use_container_width=True)
+
+if "경과일" in viz_filtered.columns:
+    st.markdown("### 🔹 경과일 분포 (히스토그램)")
+    fig_day_hist = px.histogram(
+        viz_filtered,
+        x="경과일",
+        nbins=30,
+        title="VOC 경과일 분포",
+    )
+    st.plotly_chart(fig_day_hist, use_container_width=True)
+
+# ------------------------------------------------------
+# 🔸 4. 박스플롯 (지사별 월정료 / 경과일)
+# ------------------------------------------------------
+if "관리지사" in viz_filtered.columns and "월정료_수치" in viz_filtered.columns:
+    st.markdown("### 🔹 박스플롯 — 지사별 월정료 비교")
+    fig_fee_box = px.box(
+        viz_filtered,
+        x="관리지사",
+        y="월정료_수치",
+        points="all",
+        color="관리지사",
+    )
+    st.plotly_chart(fig_fee_box, use_container_width=True)
+
+if "관리지사" in viz_filtered.columns and "경과일" in viz_filtered.columns:
+    st.markdown("### 🔹 박스플롯 — 지사별 VOC 경과일 비교")
+    fig_day_box = px.box(
+        viz_filtered,
+        x="관리지사",
+        y="경과일",
+        points="all",
+        color="관리지사",
+    )
+    st.plotly_chart(fig_day_box, use_container_width=True)
+
+# ------------------------------------------------------
+# 🔸 5. 도넛 차트 (리스크 등급 비율)
+# ------------------------------------------------------
+if "리스크등급" in viz_filtered.columns:
+    st.markdown("### 🔹 Risk 등급 비율 (도넛 차트)")
+    rc = viz_filtered["리스크등급"].value_counts().reset_index()
+    rc.columns = ["리스크등급", "건수"]
+
+    fig_donut = px.pie(
+        rc,
+        names="리스크등급",
+        values="건수",
+        hole=0.5,
+        title="리스크등급 비율",
+    )
+    st.plotly_chart(fig_donut, use_container_width=True)
+
+
+
+
+
+
+
+    
+
 
     # ======================================================
     # 6) 텍스트 키워드 분석
