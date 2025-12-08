@@ -897,6 +897,22 @@ st.sidebar.caption(f"마지막 갱신: {datetime.now().strftime('%Y-%m-%d %H:%M:
 # 🔍 VOC 유형 필터 추가
 # ==============================
 
+# 담당유형(SP)
+if "담당유형" in df_voc.columns:
+    voc_mid_values = (
+        ["전체"] 
+        + sorted(df_voc["담당유형"].dropna().astype(str).unique().tolist())
+    )
+    sel_voc_mid = st.sidebar.selectbox(
+        "📌 담당유형",
+        options=voc_mid_values,
+        index=0,
+        key="filter_voc_mid"
+    )
+else:
+    sel_voc_mid = "전체"
+
+
 # VOC유형중 (중분류)
 if "VOC유형중" in df_voc.columns:
     voc_mid_values = (
