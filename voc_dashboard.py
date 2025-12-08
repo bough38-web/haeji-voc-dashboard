@@ -691,6 +691,7 @@ unmatched_global = voc_filtered_global[
 # ----------------------------------------------------
 # 12. 상단 KPI 카드
 # ----------------------------------------------------
+
 st.markdown("## 📊 해지 VOC 종합 대시보드")
 
 total_voc_rows = len(voc_filtered_global)
