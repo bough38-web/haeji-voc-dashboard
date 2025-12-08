@@ -1930,42 +1930,51 @@ with tab_drill:
             f"**리텐션P 티어:** `{rec['retp_tier']}` / "
             f"**월정료 티어:** `{rec['fee_tier']}`"
         )
-
+        
         st.markdown("#### ✅ 1차 권장 정책")
         st.success(rec["primary_action"])
-
+        
         st.markdown("#### 🔄 대안 정책")
         st.info(rec["backup_action"])
-
+        
         st.markdown("#### 💬 상담 시 활용 가이드")
         st.write(rec["comment"])
-
+        
         st.markdown("---")
         st.markdown("---")
-
+        
+        # LEFT / RIGHT 영역 구성
         c_left, c_right = st.columns(2)
-
+        
+        # ------------------------------------------------
+        # LEFT : VOC 이력
+        # ------------------------------------------------
         with c_left:
-             st.markdown("#### 📘 VOC 이력 (전체)")
-                 if voc_hist.empty:
-             st.info("VOC 이력이 없습니다.")
-                 else:
-             st.dataframe(
-                style_risk(voc_hist[display_cols]),
-                 use_container_width=True,
-                 height=320,
-         )
-        with c_right:
-             st.markdown("#### 📂 기타 출처 이력 (해지시설/요청/설변/정지/파이프라인)")
-                 if other_hist.empty:
-             st.info("기타 출처 데이터가 없습니다.")
-                else:
-             st.dataframe(
-                other_hist,
-                use_container_width=True,
-                height=320,
-         )
+            st.markdown("#### 📘 VOC 이력 (전체)")
+        
+            if voc_hist.empty:
+                st.info("VOC 이력이 없습니다.")
+            else:
+                st.dataframe(
+                    style_risk(voc_hist[display_cols]),
+                    use_container_width=True,
+                    height=320,
+                )
 
+# ------------------------------------------------
+# RIGHT : 기타 출처 이력
+# ------------------------------------------------
+with c_right:
+    st.markdown("#### 📂 기타 출처 이력 (해지시설/요청/설변/정지/파이프라인)")
+
+    if other_hist.empty:
+        st.info("기타 출처 데이터가 없습니다.")
+    else:
+        st.dataframe(
+            other_hist,
+            use_container_width=True,
+            height=320,
+        )
     # ---------------------------
     # 1) 경제적 사정 케이스
     # ---------------------------
