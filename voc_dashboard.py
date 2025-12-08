@@ -897,21 +897,6 @@ st.sidebar.caption(f"마지막 갱신: {datetime.now().strftime('%Y-%m-%d %H:%M:
 # 🔍 VOC 유형 필터 추가
 # ==============================
 
-# VOC유형 (대분류)
-if "VOC유형" in df_voc.columns:
-    voc_type_values = (
-        ["전체"] 
-        + sorted(df_voc["VOC유형"].dropna().astype(str).unique().tolist())
-    )
-    sel_voc_type = st.sidebar.selectbox(
-        "📌 VOC유형(대분류)",
-        options=voc_type_values,
-        index=0,
-        key="filter_voc_type"
-    )
-else:
-    sel_voc_type = "전체"
-
 # VOC유형중 (중분류)
 if "VOC유형중" in df_voc.columns:
     voc_mid_values = (
@@ -941,6 +926,22 @@ if "VOC유형소" in df_voc.columns:
     )
 else:
     sel_voc_small = "전체"
+
+# VOC유형 (소2)
+if "VOC유형" in df_voc.columns:
+    voc_type_values = (
+        ["전체"] 
+        + sorted(df_voc["VOC유형"].dropna().astype(str).unique().tolist())
+    )
+    sel_voc_type = st.sidebar.selectbox(
+        "📌 VOC유형(대분류)",
+        options=voc_type_values,
+        index=0,
+        key="filter_voc_type"
+    )
+else:
+    sel_voc_type = "전체"
+
 
 # ---------------------------------------
 # 🔐 로그인 타입별 데이터 접근 제어
