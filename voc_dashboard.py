@@ -738,11 +738,12 @@ with tab_viz:
 
     if unmatched_global.empty:
         st.info("현재 조건에서 비매칭(X) 데이터가 없습니다.")
-    else:
-        left, right = st.columns([1, 2])
+        st.stop()
 
-        # ===== 🔥 필터 UI 개선 영역 시작 =====
-        st.markdown("""
+    # -------------------------
+    # 🔥 필터 UI (상단 고정)
+    # -------------------------
+    st.markdown("""
         <div style="
             background:#ffffff;
             border:1px solid #e5e7eb;
@@ -754,44 +755,33 @@ with tab_viz:
         <b>🎛️ 필터</b><br>
         지사와 담당자를 선택하면 오른쪽 모든 시각화가 즉시 갱신됩니다.
         </div>
-        """, unsafe_allow_html=True)
+    """, unsafe_allow_html=True)
 
-        colA, colB = st.columns([1.2, 1.2])
+    colA, colB = st.columns([1.2, 1.2])
 
-        # 🌈 지사 선택 (pills 스타일)
-        b_opts = ["전체"] + sort_branch(unmatched_global["관리지사"].dropna().unique())
-        sel_b_viz = colA.pills(
-            "🏢 지사 선택",
-            options=b_opts,
-            selection_mode="single",
-            key="viz_branch",
-        )
+    b_opts = ["전체"] + sort_branch(unmatched_global["관리지사"].dropna().unique())
+    sel_b_viz = colA.pills(
+        "🏢 지사 선택",
+        options=b_opts,
+        selection_mode="single",
+        key="viz_branch",
+    )
+    sel_b_viz = sel_b_viz[0] if isinstance(sel_b_viz, list) else sel_b_viz
 
-        # 변환
-        sel_b_viz = sel_b_viz[0] if isinstance(sel_b_viz, list) else sel_b_viz
+    tmp_mgr = unmatched_global.copy()
+    if sel_b_viz != "전체":
+        tmp_mgr = tmp_mgr[tmp_mgr["관리지사"] == sel_b_viz]
 
-        # 🌈 담당자 선택
-        tmp_mgr = unmatched_global.copy()
-        if sel_b_viz != "전체":
-            tmp_mgr = tmp_mgr[tmp_mgr["관리지사"] == sel_b_viz]
+    mgr_list_viz = sorted([
+        m for m in tmp_mgr["구역담당자_통합"].astype(str).unique().tolist() if m not in ["", "nan"]
+    ])
 
-        mgr_list_viz = (
-            tmp_mgr["구역담당자_통합"]
-            .dropna()
-            .astype(str)
-            .replace("nan", "")
-            .unique()
-            .tolist()
-        )
-
-        mgr_list_viz = sorted([m for m in mgr_list_viz if m])
-
-        sel_mgr_viz = colB.selectbox(
-            "👤 담당자 선택",
-            options=["(전체)"] + mgr_list_viz,
-            index=0,
-            key="viz_mgr",
-        )
+    sel_mgr_viz = colB.selectbox(
+        "👤 담당자 선택",
+        options=["(전체)"] + mgr_list_viz,
+        index=0,
+        key="viz_mgr",
+    )
 
         # ===== 🔥 필터 UI 개선 영역 끝 =====
 
