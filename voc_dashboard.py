@@ -422,7 +422,7 @@ def parse_fee(x: object) -> float:
     if s == "" or s.lower() in ["nan", "none"]:
         return np.nan
     s = s.replace(",", "")
-    digits = "".join(ch for ch in s if (ch.isdigit() or ch == ".")))
+    digits = "".join(ch for ch in s if (ch.isdigit() or ch == "."))
     if digits == "":
         return np.nan
     try:
