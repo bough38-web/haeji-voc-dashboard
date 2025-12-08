@@ -15,7 +15,7 @@ except Exception:
     HAS_PLOTLY = False
 
 # ----------------------------------------------------
-# 0. 기본 설정 & 라이트톤 / 반응형 레이아웃 CSS
+# 0. 기본 설정 & 라이트톤 / 반응형 레이아웃 CSSa
 # ----------------------------------------------------
 
 st.set_page_config(page_title="해지 VOC 종합 대시보드", layout="wide")
@@ -160,6 +160,7 @@ if "SMTP_HOST" in st.secrets:
     SMTP_PASSWORD = st.secrets["SMTP_PASSWORD"]
     SENDER_NAME = st.secrets["SENDER_NAME"]
 else:
+    # 로컬에서 dotenv 사용할 경우
     try:
         from dotenv import load_dotenv
         load_dotenv()
@@ -171,10 +172,12 @@ else:
     SMTP_PASSWORD = os.getenv("SMTP_PASSWORD", "")
     SENDER_NAME = os.getenv("SENDER_NAME", "해지VOC 관리자")
 
-MERGED_PATH = "merged.xlsx"
-FEEDBACK_PATH = "feedback.csv"
-CONTACT_PATH = "contact_map.xlsx"
-
+# ----------------------------------------------------
+# 1-A. 파일 경로 설정
+# ----------------------------------------------------
+MERGED_PATH = "merged.xlsx"                 # VOC 통합파일
+FEEDBACK_PATH = "feedback.csv"              # 처리내역 CSV 저장 경로
+CONTACT_PATH = "contact_map.xlsx"  # 담당자 매핑 파일
 
 # ----------------------------------------------------
 # 2. 공통 유틸
@@ -187,16 +190,17 @@ def safe_str(x):
 
 def detect_column(df: pd.DataFrame, keywords: list[str]) -> str | None:
     """담당자/이메일/휴대폰 컬럼 자동 탐색"""
+    # 정확 일치 우선
     for k in keywords:
         if k in df.columns:
             return k
+    # 부분 일치
     for col in df.columns:
         s = str(col)
         for k in keywords:
             if k.lower() in s.lower():
                 return col
     return None
-
 
 # ----------------------------------------------------
 # 3. 데이터 로딩
@@ -243,6 +247,7 @@ def load_voc_data(path: str) -> pd.DataFrame:
 
 @st.cache_data
 def load_feedback(path: str) -> pd.DataFrame:
+    """계약번호 단위 피드백 CSV"""
     if os.path.exists(path):
         try:
             fb = pd.read_csv(path, encoding="utf-8-sig")
@@ -261,6 +266,7 @@ def save_feedback(path: str, fb_df: pd.DataFrame) -> None:
 
 @st.cache_data
 def load_contact_map(path: str) -> tuple[pd.DataFrame, dict]:
+    """영업구역 담당자 연락처 매핑"""
     if not os.path.exists(path):
         st.warning(
             f"❌ 담당자 매핑 파일 '{path}' 을(를) 찾을 수 없습니다. "
@@ -342,7 +348,6 @@ def sort_branch(series):
         key=lambda x: BRANCH_ORDER.index(x),
     )
 
-
 # ----------------------------------------------------
 # 5. 영업구역 / 담당자 통합 컬럼
 # ----------------------------------------------------
@@ -391,7 +396,7 @@ df_voc["매칭여부"] = df_voc["계약번호_정제"].apply(
 )
 
 # ----------------------------------------------------
-# 7. 설치주소 / 월정료 정제 + 10만단위 구간
+# 7. 설치주소 / 월정료 정제
 # ----------------------------------------------------
 def coalesce_cols(row, candidates):
     for c in candidates:
@@ -407,7 +412,6 @@ df_voc["설치주소_표시"] = df_voc.apply(
     axis=1,
 )
 
-# 월정료 컬럼 우선순위: 시설_KTT월정료(조정) → KTT월정료(조정)
 fee_raw_col = None
 if "시설_KTT월정료(조정)" in df_voc.columns:
     fee_raw_col = "시설_KTT월정료(조정)"
@@ -429,7 +433,7 @@ def parse_fee(x: object) -> float:
         v = float(digits)
     except Exception:
         return np.nan
-    if v >= 200000:  # 10배 보정 케이스 방지
+    if v >= 200000:  # 10배 보정
         v = v / 10.0
     return v
 
@@ -444,22 +448,14 @@ if fee_raw_col is not None:
 
     df_voc[fee_raw_col] = df_voc["월정료_수치"].apply(format_fee)
 
-    def fee_band_10(v):
+    def fee_band(v):
         if pd.isna(v):
             return "미기재"
-        if v < 100000:
-            return "10만 미만"
-        if v < 200000:
-            return "10만~20만"
-        if v < 300000:
-            return "20만~30만"
-        if v < 400000:
-            return "30만~40만"
-        if v < 500000:
-            return "40만~50만"
-        return "50만 이상"
+        if v >= 100000:
+            return "10만 이상"
+        return "10만 미만"
 
-    df_voc["월정료구간"] = df_voc["월정료_수치"].apply(fee_band_10)
+    df_voc["월정료구간"] = df_voc["월정료_수치"].apply(fee_band)
 else:
     df_voc["월정료_수치"] = np.nan
     df_voc["월정료구간"] = "미기재"
@@ -568,105 +564,92 @@ def style_risk(df_view: pd.DataFrame):
 
     return df_view.style.apply(_row_style, axis=1)
 
-
 # ----------------------------------------------------
-# 10. 글로벌 필터 — 버튼형 UI + 월정료 10만원 단위 구간
+# 10. 글로벌 필터 — 버튼형 UI + 월정료 10만원 단위 구간 적용
+# ----------------------------------------------------
+# ----------------------------------------------------
+# 8. 사이드바 - 글로벌 필터 (버튼 UI + 월정료 10만원 단위)
 # ----------------------------------------------------
 st.sidebar.title("🔧 글로벌 필터")
 
-# 1) 접수일자
+# 날짜 필터
 if "접수일시" in df_voc.columns and df_voc["접수일시"].notna().any():
     min_d = df_voc["접수일시"].min().date()
     max_d = df_voc["접수일시"].max().date()
-
-    st.sidebar.markdown("#### 📅 접수일자 범위")
     dr = st.sidebar.date_input(
-        "",
+        "📅 접수일자 범위",
         value=(min_d, max_d),
         min_value=min_d,
         max_value=max_d,
-        key="global_date_range",
     )
 else:
     dr = None
 
-st.sidebar.markdown("---")
-
-# 2) 지사
+# 지사 필터 → 버튼형 선택
 branches_all = sort_branch(df_voc["관리지사"].dropna().unique())
-sel_branches = st.sidebar.multiselect(
+sel_branches = st.sidebar.pills(
     "🏢 관리지사 선택",
-    options=branches_all,
-    default=branches_all,
-    key="global_branches_btn",
+    options=["전체"] + branches_all,
+    selection_mode="multi",
+    key="filter_branch_btn",
 )
 
-st.sidebar.markdown("---")
-
-# 3) 리스크 등급
-st.sidebar.markdown("#### ⚠ 리스크 등급")
-risk_options = ["HIGH", "MEDIUM", "LOW"]
-sel_risk = st.sidebar.multiselect(
-    "",
-    options=risk_options,
-    default=risk_options,
-    key="global_risk_btn",
+# 리스크 등급 필터
+risk_all = ["HIGH", "MEDIUM", "LOW"]
+sel_risk = st.sidebar.pills(
+    "⚠ 리스크등급",
+    options=risk_all,
+    selection_mode="multi",
+    default=risk_all,
+    key="filter_risk_btn",
 )
 
-st.sidebar.markdown("---")
-
-# 4) 매칭 여부
-st.sidebar.markdown("#### 🔍 매칭 여부")
-match_options = ["매칭(O)", "비매칭(X)"]
-sel_match = st.sidebar.multiselect(
-    "",
-    options=match_options,
-    default=match_options,
-    key="global_match_btn",
+# 매칭여부
+match_all = ["매칭(O)", "비매칭(X)"]
+sel_match = st.sidebar.pills(
+    "🔍 매칭여부",
+    options=match_all,
+    selection_mode="multi",
+    default=match_all,
+    key="filter_match_btn",
 )
 
-st.sidebar.markdown("---")
-
-# 5) 월정료 구간 (10만 단위)
-st.sidebar.markdown("### 💰 월정료 구간 (시설_KTT월정료 기준)")
-fee_segments = [
+# 🔥 월정료 구간 버튼 (10만원 단위)
+fee_bands = [
     "전체",
-    "10만 미만",
+    "0~10만",
     "10만~20만",
     "20만~30만",
     "30만~40만",
     "40만~50만",
     "50만 이상",
 ]
-fee_filter_global = st.sidebar.radio(
-    "",
-    options=fee_segments,
+
+sel_fee_band = st.sidebar.radio(
+    "💰 월정료 구간",
+    options=fee_bands,
     index=0,
-    key="global_fee_btn",
+    key="filter_fee_band",
 )
 
 st.sidebar.markdown("---")
-st.sidebar.caption(f"🕓 마지막 갱신: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+st.sidebar.caption(f"마지막 갱신: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
 
 # ----------------------------------------------------
-# 11. 글로벌 필터 적용
+# 9. 글로벌 필터 적용
 # ----------------------------------------------------
 voc_filtered_global = df_voc.copy()
 
 # 날짜
 if dr and isinstance(dr, tuple) and len(dr) == 2:
-    sd, ed = dr
-    if isinstance(sd, date) and isinstance(ed, date):
-        voc_filtered_global = voc_filtered_global[
-            (voc_filtered_global["접수일시"] >= pd.to_datetime(sd))
-            & (
-                voc_filtered_global["접수일시"]
-                < pd.to_datetime(ed) + pd.Timedelta(days=1)
-            )
-        ]
+    start_d, end_d = dr
+    voc_filtered_global = voc_filtered_global[
+        (voc_filtered_global["접수일시"] >= pd.to_datetime(start_d))
+        & (voc_filtered_global["접수일시"] < pd.to_datetime(end_d) + pd.Timedelta(days=1))
+    ]
 
 # 지사
-if sel_branches:
+if "전체" not in sel_branches:
     voc_filtered_global = voc_filtered_global[
         voc_filtered_global["관리지사"].isin(sel_branches)
     ]
@@ -677,36 +660,40 @@ if sel_risk:
         voc_filtered_global["리스크등급"].isin(sel_risk)
     ]
 
-# 매칭
+# 매칭여부
 if sel_match:
     voc_filtered_global = voc_filtered_global[
         voc_filtered_global["매칭여부"].isin(sel_match)
     ]
 
-# 월정료 구간
-if fee_filter_global != "전체":
-    fee = voc_filtered_global["월정료_수치"].astype(float)
+# 월정료 10만 단위 필터 적용
+if sel_fee_band != "전체":
+    fee = (
+        voc_filtered_global["시설_KTT월정료(조정)"]
+        .replace(",", "", regex=False)
+        .astype(float)
+        .fillna(-1)
+    )  # 월정료 컬럼 이름 다르면 알려줘!
 
-    if fee_filter_global == "10만 미만":
-        voc_filtered_global = voc_filtered_global[fee < 100000]
-    elif fee_filter_global == "10만~20만":
+    if sel_fee_band == "0~10만":
+        voc_filtered_global = voc_filtered_global[(fee >= 0) & (fee < 100000)]
+    elif sel_fee_band == "10만~20만":
         voc_filtered_global = voc_filtered_global[(fee >= 100000) & (fee < 200000)]
-    elif fee_filter_global == "20만~30만":
+    elif sel_fee_band == "20만~30만":
         voc_filtered_global = voc_filtered_global[(fee >= 200000) & (fee < 300000)]
-    elif fee_filter_global == "30만~40만":
+    elif sel_fee_band == "30만~40만":
         voc_filtered_global = voc_filtered_global[(fee >= 300000) & (fee < 400000)]
-    elif fee_filter_global == "40만~50만":
+    elif sel_fee_band == "40만~50만":
         voc_filtered_global = voc_filtered_global[(fee >= 400000) & (fee < 500000)]
-    elif fee_filter_global == "50만 이상":
-        voc_filtered_global = voc_filtered_global[fee >= 500000]
+    elif sel_fee_band == "50만 이상":
+        voc_filtered_global = voc_filtered_global[(fee >= 500000)]
 
-# 비매칭 추출
 unmatched_global = voc_filtered_global[
     voc_filtered_global["매칭여부"] == "비매칭(X)"
 ].copy()
 
 # ----------------------------------------------------
-# 12. 상단 KPI
+# 12. 상단 KPI 카드
 # ----------------------------------------------------
 st.markdown("## 📊 해지 VOC 종합 대시보드")
 
@@ -738,13 +725,13 @@ tab_viz, tab_all, tab_unmatched, tab_drill, tab_filter, tab_alert = st.tabs(
         "📘 VOC 전체(계약 기준)",
         "🧯 해지방어 활동시설(비매칭)",
         "🔍 해지상담대상 활동등록",
-        "🎯 해지방어 정밀 필터(VOC유형소)",
+        "🎯 해지방어 활동시설 정밀 필터(VOC유형소)",
         "📨 담당자 알림(베타)",
     ]
 )
 
 # ====================================================
-# TAB 1 — 지사/담당자 시각화
+# TAB VIZ — 지사 / 담당자 시각화
 # ====================================================
 with tab_viz:
     st.subheader("📊 지사 / 담당자별 비매칭 리스크 현황")
@@ -898,12 +885,12 @@ with tab_viz:
                 else:
                     st.line_chart(trend, use_container_width=True, height=260)
 
-            # 선택한 담당자 레이더 차트 (HIGH/MEDIUM/LOW)
-            if sel_mgr_viz != "(전체)" and HAS_PLOTLY:
+            # 선택한 담당자 레이더 차트 (HIGH/MEDIUM/LOW 비율)
+            if sel_mgr_viz != "(전체)":
                 mgr_data = unmatched_global[
                     unmatched_global["구역담당자_통합"].astype(str) == sel_mgr_viz
                 ]
-                if not mgr_data.empty:
+                if not mgr_data.empty and HAS_PLOTLY:
                     radar = (
                         mgr_data["리스크등급"]
                         .value_counts()
@@ -930,7 +917,7 @@ with tab_viz:
                     st.plotly_chart(fig_radar, use_container_width=True)
 
 # ====================================================
-# TAB 2 — VOC 전체 (계약번호 기준 요약)
+# TAB ALL — VOC 전체 (계약번호 기준 요약)
 # ====================================================
 with tab_all:
     st.subheader("📘 VOC 전체 (계약번호 기준 요약)")
@@ -953,19 +940,18 @@ with tab_all:
             temp_for_mgr["관리지사"] == selected_branch_tab1
         ]
 
-    if "구역담당자_통합" in temp_for_mgr.columns:
-        mgr_options_tab1 = (
-            ["전체"]
-            + sorted(
-                temp_for_mgr["구역담당자_통합"]
-                .dropna()
-                .astype(str)
-                .unique()
-                .tolist()
-            )
+    mgr_options_tab1 = (
+        ["전체"]
+        + sorted(
+            temp_for_mgr["구역담당자_통합"]
+            .dropna()
+            .astype(str)
+            .unique()
+            .tolist()
         )
-    else:
-        mgr_options_tab1 = ["전체"]
+        if "구역담당자_통합" in temp_for_mgr.columns
+        else ["전체"]
+    )
 
     selected_mgr_tab1 = row1_col2.radio(
         "담당자 선택",
@@ -980,6 +966,7 @@ with tab_all:
     q_addr = s3.text_input("주소 검색(부분)", key="tab1_addr")
 
     temp = voc_filtered_global.copy()
+
     if selected_branch_tab1 != "전체":
         temp = temp[temp["관리지사"] == selected_branch_tab1]
     if selected_mgr_tab1 != "전체":
@@ -1030,7 +1017,6 @@ with tab_all:
             fee_raw_col if fee_raw_col is not None else None,
             "계약상태(중)",
             "서비스(소)",
-            "월정료구간",
         ]
         summary_cols = [c for c in summary_cols if c and c in df_summary.columns]
         summary_cols = filter_valid_columns(summary_cols, df_summary)
@@ -1043,7 +1029,7 @@ with tab_all:
         )
 
 # ====================================================
-# TAB 3 — 해지방어 활동시설(비매칭)
+# TAB UNMATCHED — 해지방어 활동시설(비매칭)
 # ====================================================
 with tab_unmatched:
     st.subheader("🧯 해지방어 활동시설 (비매칭, 계약번호 기준)")
@@ -1078,19 +1064,18 @@ with tab_unmatched:
                 temp_u_for_mgr["관리지사"] == selected_branch_u
             ]
 
-        if "구역담당자_통합" in temp_u_for_mgr.columns:
-            mgr_options_u = (
-                ["전체"]
-                + sorted(
-                    temp_u_for_mgr["구역담당자_통합"]
-                    .dropna()
-                    .astype(str)
-                    .unique()
-                    .tolist()
-                )
+        mgr_options_u = (
+            ["전체"]
+            + sorted(
+                temp_u_for_mgr["구역담당자_통합"]
+                .dropna()
+                .astype(str)
+                .unique()
+                .tolist()
             )
-        else:
-            mgr_options_u = ["전체"]
+            if "구역담당자_통합" in temp_u_for_mgr.columns
+            else ["전체"]
+        )
 
         selected_mgr_u = u_col2.radio(
             "담당자 선택",
@@ -1141,7 +1126,6 @@ with tab_unmatched:
                 fee_raw_col if fee_raw_col is not None else None,
                 "계약상태(중)",
                 "서비스(소)",
-                "월정료구간",
             ]
             summary_cols_u = [
                 c for c in summary_cols_u if c and c in df_u_summary.columns
@@ -1160,14 +1144,16 @@ with tab_unmatched:
                 key="tab2_unmatched_editor",
             )
 
-            # 행 선택 → selectbox 연동
+            # 행 선택 상태 읽기 → selectbox 연동
             selected_idx = None
             state = st.session_state.get("tab2_unmatched_editor", {})
             selected_rows = []
             if isinstance(state, dict):
                 if "selected_rows" in state and state["selected_rows"]:
                     selected_rows = state["selected_rows"]
-                elif "selection" in state and isinstance(state["selection"], dict):
+                elif "selection" in state and isinstance(
+                    state["selection"], dict
+                ):
                     rows_sel = state["selection"].get("rows")
                     if rows_sel:
                         selected_rows = rows_sel
@@ -1176,7 +1162,9 @@ with tab_unmatched:
 
             u_contract_list = df_u_summary["계약번호_정제"].astype(str).tolist()
             default_index = 0
-            if selected_idx is not None and 0 <= selected_idx < len(u_contract_list):
+            if selected_idx is not None and 0 <= selected_idx < len(
+                u_contract_list
+            ):
                 default_index = selected_idx + 1
 
             st.markdown("### 📂 선택한 계약번호 상세 VOC 이력")
@@ -1210,7 +1198,7 @@ with tab_unmatched:
             )
 
 # ====================================================
-# TAB 4 — 해지상담대상 활동등록 (계약별 드릴다운)
+# TAB DRILL — 해지상담대상 활동등록 (계약별 드릴다운)
 # ====================================================
 with tab_drill:
     st.subheader("🔍 해지상담대상 활동등록 (계약번호 기준 드릴다운)")
@@ -1243,19 +1231,18 @@ with tab_drill:
     if sel_branch_d != "전체":
         tmp_mgr_d = tmp_mgr_d[tmp_mgr_d["관리지사"] == sel_branch_d]
 
-    if "구역담당자_통합" in tmp_mgr_d.columns:
-        mgr_options_d = (
-            ["전체"]
-            + sorted(
-                tmp_mgr_d["구역담당자_통합"]
-                .dropna()
-                .astype(str)
-                .unique()
-                .tolist()
-            )
+    mgr_options_d = (
+        ["전체"]
+        + sorted(
+            tmp_mgr_d["구역담당자_통합"]
+            .dropna()
+            .astype(str)
+            .unique()
+            .tolist()
         )
-    else:
-        mgr_options_d = ["전체"]
+        if "구역담당자_통합" in tmp_mgr_d.columns
+        else ["전체"]
+    )
 
     sel_mgr_d = d2.radio(
         "담당자 선택",
@@ -1308,7 +1295,6 @@ with tab_drill:
             fee_raw_col if fee_raw_col is not None else None,
             "계약상태(중)",
             "서비스(소)",
-            "월정료구간",
         ]
         sum_cols_d = [c for c in sum_cols_d if c and c in df_d_summary.columns]
         sum_cols_d = filter_valid_columns(sum_cols_d, df_d_summary)
@@ -1460,6 +1446,7 @@ else:
     fb_sel = fb_all[fb_all["계약번호_정제"].astype(str) == str(sel_cn)].copy()
     fb_sel = fb_sel.sort_values("등록일자", ascending=False)
 
+    # 관리자 비밀번호 (Q1=C, Q2=3, Q3=A → C3A)
     ADMIN_CODE = "C3A"
     admin_pw = st.text_input("관리자 비밀번호 입력 (삭제/수정 시 필요)", type="password")
     is_admin = admin_pw == ADMIN_CODE
@@ -1495,6 +1482,7 @@ else:
                             st.rerun()
                 st.markdown("</div>", unsafe_allow_html=True)
 
+    # 새 처리내용 입력
     st.markdown("##### ➕ 새 처리내용 등록")
     new_content = st.text_area("고객대응 / 현장 처리내용 입력", key="new_fb_content")
     new_writer = st.text_input("등록자", key="new_fb_writer")
@@ -1520,7 +1508,7 @@ else:
 st.markdown("</div>", unsafe_allow_html=True)
 
 # ====================================================
-# TAB FILTER — 정밀 필터 안내 (추후 확장용)
+# TAB FILTER — (정밀 필터 탭은 추후 확장용, 현재는 안내만)
 # ====================================================
 with tab_filter:
     st.subheader("🎯 해지방어 활동시설 정밀 필터 (VOC유형소 기준)")
@@ -1543,6 +1531,7 @@ with tab_alert:
     )
 
     if contact_df.empty:
+        # 커스텀 경고 박스 + Streamlit warning
         st.markdown(
             """
             <div style="
@@ -1611,7 +1600,7 @@ with tab_alert:
             if not df_mgr_rows.empty:
                 st.dataframe(
                     df_mgr_rows[
-                        ["계약번호_정제", "상호", "관리지사", "리스크등급", "경과일수", "월정료구간"]
+                        ["계약번호_정제", "상호", "관리지사", "리스크등급", "경과일수"]
                     ],
                     use_container_width=True,
                     height=250,
@@ -1641,6 +1630,7 @@ with tab_alert:
                         msg["To"] = custom_email
                         msg.set_content(body)
 
+                        # CSV 첨부
                         csv_bytes = df_mgr_rows.to_csv(index=False).encode("utf-8-sig")
                         msg.add_attachment(
                             csv_bytes,
