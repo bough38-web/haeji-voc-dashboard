@@ -1784,6 +1784,186 @@ with tab_drill:
                         height=320,
                     )
 
+import re
+
+def infer_cancel_reason(row: pd.Series) -> str:
+    """
+    해지상세 / VOC유형소 / 등록내용을 합쳐서
+    해지 사유 카테고리를 룰 기반으로 추론
+    """
+    text_parts = []
+    for col in ["해지상세", "VOC유형소", "등록내용"]:
+        if col in row and pd.notna(row[col]):
+            text_parts.append(str(row[col]))
+    full_text = " ".join(text_parts)
+    text = full_text.replace(" ", "").lower()  # 공백 제거, 소문자화
+
+    # 1) 경제적 사정
+    econ_keywords = ["경제", "사정", "매출감소", "매출하락", "매출부진", "코로나", "어려움", "경영악화", "고정비", "비용절감"]
+    if any(k in text for k in econ_keywords):
+        return "경제적 사정"
+
+    # 2) 품질/장애 불만
+    quality_keywords = ["장애", "오류", "끊김", "느림", "속도", "품질", "버그", "고장", "불량"]
+    if any(k in text for k in quality_keywords):
+        return "품질/장애 불만"
+
+    # 3) 요금/가격 불만 (경제랑 구분)
+    price_keywords = ["비싸", "요금", "가격", "단가", "인상", "인하요청", "할인요청"]
+    if any(k in text for k in price_keywords):
+        return "요금/가격 불만"
+
+    # 4) 서비스/응대 불만
+    svc_keywords = ["응대", "기사", "설치", "서비스불만", "불친절", "지연", "안와요", "연락안옴"]
+    if any(k in text for k in svc_keywords):
+        return "서비스/응대 불만"
+
+    # 5) 경쟁사/타사 이동
+    comp_keywords = ["타사", "경쟁사", "다른회사", "옮김", "이동", "타사이동"]
+    if any(k in text for k in comp_keywords):
+        return "경쟁사/타사 이동"
+
+    # 못 잡으면 기타
+    if full_text.strip():
+        return "기타(텍스트 있음)"
+    return "기타(정보 부족)"
+
+def recommend_retention_policy(row: pd.Series) -> dict:
+    """
+    한 계약(row)에 대해 방어 정책 추천
+    - AI_해지사유
+    - 리스크등급
+    - 월정료_수치
+    - 리텐션P (있으면 사용)
+    """
+    reason = row.get("AI_해지사유", "")
+    risk = row.get("리스크등급", "LOW")
+    fee = row.get("월정료_수치", np.nan)
+    retention_p = row.get("리텐션P", np.nan)  # 없으면 NaN
+
+    # 기본값 세팅
+    primary = "일반 유지 설득 (장점 재안내)"
+    backup = "특정 혜택 없이 해지 수용"
+    comment = "추가 정보가 부족하여 일반 유지 설득을 권장합니다."
+
+    # 월정료 대략 티어
+    if pd.notna(fee):
+        if fee < 50000:
+            fee_tier = "LOW"
+        elif fee < 150000:
+            fee_tier = "MID"
+        else:
+            fee_tier = "HIGH"
+    else:
+        fee_tier = "UNKNOWN"
+
+    # 리텐션P값 단순 티어링 (예시)
+    if pd.notna(retention_p):
+        if retention_p >= 80:
+            p_tier = "HIGH"
+        elif retention_p >= 50:
+            p_tier = "MID"
+        else:
+            p_tier = "LOW"
+    else:
+        p_tier = "UNKNOWN"
+
+    # ---------------------------
+    # 1) 경제적 사정 케이스
+    # ---------------------------
+    if reason == "경제적 사정":
+        if risk == "HIGH":
+            if p_tier in ["HIGH", "MID"]:
+                primary = "3개월간 월정료 30% 인하 제안"
+                backup = "2개월 유예 + 20% 인하 제안"
+                comment = (
+                    "경제적 사정 + HIGH 리스크로 판단되어 강한 리텐션 정책을 권장합니다.\n"
+                    "- 1안: 3개월간 월정료 30% 인하\n"
+                    "- 2안: 2개월 유예 후 2개월간 20% 인하\n"
+                    "고객이 재정 악화를 호소하는 경우, 일정 기간 고정비를 줄여주는 방향으로 설득하세요."
+                )
+            else:  # p_tier LOW or UNKNOWN
+                primary = "2개월간 월정료 20% 인하 제안"
+                backup = "1개월 유예 + 10% 인하"
+                comment = (
+                    "경제적 사정이지만 리텐션P값이 낮아 과도한 할인은 제한됩니다.\n"
+                    "- 1안: 2개월간 20% 인하\n"
+                    "- 2안: 1개월 유예 + 10% 인하"
+                )
+        elif risk == "MEDIUM":
+            primary = "2개월간 월정료 10~20% 인하 제안"
+            backup = "일시 유예(1개월) + 유지 권유"
+            comment = (
+                "경제적 사정 + MEDIUM 리스크로 판단되어 중간 수준 인하를 권장합니다.\n"
+                "점주 상황에 맞게 인하율(10~20%)을 조절하세요."
+            )
+        else:  # LOW
+            primary = "1개월 유예 또는 단기 할인(10%) 제안"
+            backup = "서비스 가치 재안내 중심의 유지 설득"
+            comment = (
+                "위험도는 낮으나 경제적 어려움을 호소하는 고객입니다.\n"
+                "과한 할인보다는 '일시 유예'나 소폭 할인으로 방어를 시도하세요."
+            )
+
+    # ---------------------------
+    # 2) 품질/장애 불만
+    # ---------------------------
+    elif reason == "품질/장애 불만":
+        primary = "장애 원인 설명 + 무상 점검 및 1개월 요금감면"
+        backup = "기술지원 강화 + 품질 모니터링 약속"
+        comment = (
+            "품질/장애로 인한 해지VOC입니다.\n"
+            "- 1안: 장애 원인에 대한 투명한 설명 + 무상 점검 + 1개월 요금감면\n"
+            "- 2안: 일정 기간 품질 모니터링 및 전담 창구 안내"
+        )
+
+    # ---------------------------
+    # 3) 요금/가격 불만
+    # ---------------------------
+    elif reason == "요금/가격 불만":
+        primary = "상품 재구성(저가 플랜 전환) + 소폭 할인"
+        backup = "옵션/부가서비스 정리로 월정료 절감안 제시"
+        comment = (
+            "요금 구조에 대한 불만이므로, 상품/옵션 조정으로 고정비를 줄여주는 방안을 제안하세요.\n"
+            "리텐션P값이 높다면 초기 1~2개월 한시 할인도 함께 검토 가능합니다."
+        )
+
+    # ---------------------------
+    # 4) 서비스/응대 불만
+    # ---------------------------
+    elif reason == "서비스/응대 불만":
+        primary = "정식 사과 + 담당자 재배정/교육 + 소정의 보상"
+        backup = "관리 채널/전담 담당자 지정"
+        comment = (
+            "응대/서비스 불만이므로 요금 인하보다 '신뢰 회복'이 중요합니다.\n"
+            "사과 + 담당자 변경 + 재발방지 약속을 중심으로 설득하세요."
+        )
+
+    # ---------------------------
+    # 5) 경쟁사/타사 이동
+    # ---------------------------
+    elif reason == "경쟁사/타사 이동":
+        primary = "경쟁사 대비 강점 정리 + 핵심 기능/혜택 재강조"
+        backup = "장기 고객 혜택(추가 할인 또는 부가서비스) 제안"
+        comment = (
+            "경쟁사 제안으로 이탈하는 경우, 기능/비용/지원 측면의 차별점을 정리하여 설득하세요.\n"
+            "단, 과도한 출혈 경쟁은 지양하고 리텐션P 범위 내에서만 추가 혜택을 제안합니다."
+        )
+
+    return {
+        "reason": reason,
+        "risk": risk,
+        "fee_tier": fee_tier,
+        "retention_p_tier": p_tier,
+        "primary_action": primary,
+        "backup_action": backup,
+        "comment": comment,
+    }
+
+
+
+
+
 # ----------------------------------------------------
 # 글로벌 피드백 이력 & 입력 (선택된 sel_cn 기준)
 # ----------------------------------------------------
