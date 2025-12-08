@@ -15,7 +15,7 @@ except Exception:
     HAS_PLOTLY = False
 
 # ----------------------------------------------------
-# 0. 기본 설정 & 라이트톤 / 반응형 레이아웃 CSSa
+# 0. 기본 설정 & 라이트톤 / 반응형 레이아웃 CSS
 # ----------------------------------------------------
 
 st.set_page_config(page_title="해지 VOC 종합 대시보드", layout="wide")
@@ -35,7 +35,7 @@ st.markdown(
 
     /* 본문 컨테이너 여백 (상단 잘림 방지 + 모바일 여백 보정) */
     .block-container {
-        padding-top: 0.8rem !important;
+        padding-top: 1.4rem !important;   /* 👈 상단 여백 조금 늘림 */
         padding-bottom: 3rem !important;
         padding-left: 1.0rem !important;
         padding-right: 1.0rem !important;
@@ -177,7 +177,7 @@ else:
 # ----------------------------------------------------
 MERGED_PATH = "merged.xlsx"                 # VOC 통합파일
 FEEDBACK_PATH = "feedback.csv"              # 처리내역 CSV 저장 경로
-CONTACT_PATH = "contact_map.xlsx"  # 담당자 매핑 파일
+CONTACT_PATH = "contact_map.xlsx"           # 담당자 매핑 파일(확정)
 
 # ----------------------------------------------------
 # 2. 공통 유틸
@@ -412,11 +412,8 @@ df_voc["설치주소_표시"] = df_voc.apply(
     axis=1,
 )
 
-fee_raw_col = None
-if "시설_KTT월정료(조정)" in df_voc.columns:
-    fee_raw_col = "시설_KTT월정료(조정)"
-elif "KTT월정료(조정)" in df_voc.columns:
-    fee_raw_col = "KTT월정료(조정)"
+# 확정된 월정료 컬럼명 사용
+fee_raw_col = "시설_KTT월정료(조정)" if "시설_KTT월정료(조정)" in df_voc.columns else None
 
 
 def parse_fee(x: object) -> float:
@@ -565,10 +562,7 @@ def style_risk(df_view: pd.DataFrame):
     return df_view.style.apply(_row_style, axis=1)
 
 # ----------------------------------------------------
-# 10. 글로벌 필터 — 버튼형 UI + 월정료 10만원 단위 구간 적용
-# ----------------------------------------------------
-# ----------------------------------------------------
-# 8. 사이드바 - 글로벌 필터 (버튼 UI + 월정료 10만원 단위)
+# 10. 사이드바 - 글로벌 필터
 # ----------------------------------------------------
 st.sidebar.title("🔧 글로벌 필터")
 
@@ -614,7 +608,7 @@ sel_match = st.sidebar.pills(
     key="filter_match_btn",
 )
 
-# 🔥 월정료 구간 버튼 (10만원 단위)
+# 월정료 구간 버튼 (10만원 단위)
 fee_bands = [
     "전체",
     "0~10만",
@@ -636,7 +630,7 @@ st.sidebar.markdown("---")
 st.sidebar.caption(f"마지막 갱신: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
 
 # ----------------------------------------------------
-# 9. 글로벌 필터 적용
+# 11. 글로벌 필터 적용
 # ----------------------------------------------------
 voc_filtered_global = df_voc.copy()
 
@@ -667,13 +661,14 @@ if sel_match:
     ]
 
 # 월정료 10만 단위 필터 적용
-if sel_fee_band != "전체":
+if sel_fee_band != "전체" and fee_raw_col is not None:
     fee = (
-        voc_filtered_global["시설_KTT월정료(조정)"]
-        .replace(",", "", regex=False)
+        voc_filtered_global[fee_raw_col]
+        .astype(str)
+        .str.replace(",", "", regex=False)
         .astype(float)
         .fillna(-1)
-    )  # 월정료 컬럼 이름 다르면 알려줘!
+    )
 
     if sel_fee_band == "0~10만":
         voc_filtered_global = voc_filtered_global[(fee >= 0) & (fee < 100000)]
@@ -731,204 +726,229 @@ tab_viz, tab_all, tab_unmatched, tab_drill, tab_filter, tab_alert = st.tabs(
 )
 
 # ====================================================
-# TAB VIZ — 지사 / 담당자 시각화
+# TAB VIZ — 지사 / 담당자 시각화 (개선 버전)
 # ====================================================
 with tab_viz:
     st.subheader("📊 지사 / 담당자별 비매칭 리스크 현황")
 
     if unmatched_global.empty:
         st.info("현재 조건에서 비매칭(X) 데이터가 없습니다.")
-        st.stop()
+    else:
+        # 🔥 필터 카드 (상단 고정)
+        st.markdown(
+            """
+            <div style="
+                background:#ffffff;
+                border:1px solid #e5e7eb;
+                padding:14px 20px;
+                border-radius:12px;
+                margin-bottom:18px;
+                box-shadow:0 2px 6px rgba(0,0,0,0.05);
+            ">
+            <b>🎛️ 필터</b><br>
+            지사와 담당자를 선택하면 아래 모든 시각화가 즉시 갱신됩니다.
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
 
-    # -------------------------
-    # 🔥 필터 UI (상단 고정)
-    # -------------------------
-    st.markdown("""
-        <div style="
-            background:#ffffff;
-            border:1px solid #e5e7eb;
-            padding:14px 20px;
-            border-radius:12px;
-            margin-bottom:18px;
-            box-shadow:0 2px 6px rgba(0,0,0,0.05);
-        ">
-        <b>🎛️ 필터</b><br>
-        지사와 담당자를 선택하면 오른쪽 모든 시각화가 즉시 갱신됩니다.
-        </div>
-    """, unsafe_allow_html=True)
+        colA, colB = st.columns(2)
 
-    colA, colB = st.columns([1.2, 1.2])
+        # 지사 선택 (pills)
+        b_opts = ["전체"] + sort_branch(unmatched_global["관리지사"].dropna().unique())
+        sel_b_viz = colA.pills(
+            "🏢 지사 선택",
+            options=b_opts,
+            selection_mode="single",
+            key="viz_branch",
+        )
+        sel_b_viz = sel_b_viz[0] if isinstance(sel_b_viz, list) else sel_b_viz
 
-    b_opts = ["전체"] + sort_branch(unmatched_global["관리지사"].dropna().unique())
-    sel_b_viz = colA.pills(
-        "🏢 지사 선택",
-        options=b_opts,
-        selection_mode="single",
-        key="viz_branch",
-    )
-    sel_b_viz = sel_b_viz[0] if isinstance(sel_b_viz, list) else sel_b_viz
+        # 담당자 선택 옵션
+        tmp_mgr = unmatched_global.copy()
+        if sel_b_viz != "전체":
+            tmp_mgr = tmp_mgr[tmp_mgr["관리지사"] == sel_b_viz]
 
-    tmp_mgr = unmatched_global.copy()
-    if sel_b_viz != "전체":
-        tmp_mgr = tmp_mgr[tmp_mgr["관리지사"] == sel_b_viz]
+        mgr_list_viz = sorted(
+            [
+                m
+                for m in tmp_mgr["구역담당자_통합"].astype(str).unique().tolist()
+                if m not in ["", "nan"]
+            ]
+        )
 
-    mgr_list_viz = sorted([
-        m for m in tmp_mgr["구역담당자_통합"].astype(str).unique().tolist() if m not in ["", "nan"]
-    ])
+        sel_mgr_viz = colB.selectbox(
+            "👤 담당자 선택",
+            options=["(전체)"] + mgr_list_viz,
+            index=0,
+            key="viz_mgr",
+        )
 
-    sel_mgr_viz = colB.selectbox(
-        "👤 담당자 선택",
-        options=["(전체)"] + mgr_list_viz,
-        index=0,
-        key="viz_mgr",
-    )
+        # 선택값을 반영한 베이스 데이터
+        viz_base = unmatched_global.copy()
+        if sel_b_viz != "전체":
+            viz_base = viz_base[viz_base["관리지사"] == sel_b_viz]
+        if sel_mgr_viz != "(전체)":
+            viz_base = viz_base[viz_base["구역담당자_통합"].astype(str) == sel_mgr_viz]
 
-        # ===== 🔥 필터 UI 개선 영역 끝 =====
+        st.markdown("#### 🧱 지사별 비매칭 계약 수 (유니크 계약)")
+        bc = (
+            viz_base.groupby("관리지사")["계약번호_정제"]
+            .nunique()
+            .rename("비매칭계약수")
+        )
+        bc = bc[bc.index.isin(BRANCH_ORDER)].reindex(BRANCH_ORDER).dropna()
 
-        with right:
-            st.markdown("#### 🧱 지사별 비매칭 계약 수 (유니크 계약)")
-            bc = (
-                unmatched_global.groupby("관리지사")["계약번호_정제"]
+        if HAS_PLOTLY and not bc.empty:
+            bc_max = bc.max()
+            fig1 = px.bar(
+                bc.reset_index(),
+                x="관리지사",
+                y="비매칭계약수",
+                text="비매칭계약수",
+            )
+            fig1.update_traces(textposition="outside", textfont_size=11)
+            fig1.update_yaxes(range=[0, bc_max * 1.3])
+            fig1.update_layout(
+                height=260,
+                margin=dict(l=40, r=20, t=60, b=40),
+                xaxis_title="",
+                yaxis_title="계약 수",
+            )
+            st.plotly_chart(fig1, use_container_width=True)
+        elif not bc.empty:
+            st.bar_chart(bc, use_container_width=True, height=260)
+        else:
+            st.info("선택된 조건에서 표시할 지사 데이터가 없습니다.")
+
+        c2a, c2b = st.columns(2)
+
+        with c2a:
+            st.markdown("#### 👤 담당자별 비매칭 TOP 15 (유니크 계약)")
+            mc = (
+                viz_base.groupby("구역담당자_통합")["계약번호_정제"]
                 .nunique()
                 .rename("비매칭계약수")
+                .sort_values(ascending=False)
             )
-            bc = bc[bc.index.isin(BRANCH_ORDER)].reindex(BRANCH_ORDER).dropna()
+            mc = mc[mc.index.astype(str).str.strip() != ""].head(15)
 
-            if HAS_PLOTLY and not bc.empty:
-                fig1 = px.bar(
-                    bc.reset_index(),
-                    x="관리지사",
+            if HAS_PLOTLY and not mc.empty:
+                mc_max = mc.max()
+                fig2 = px.bar(
+                    mc.reset_index(),
+                    x="구역담당자_통합",
                     y="비매칭계약수",
                     text="비매칭계약수",
                 )
-                fig1.update_traces(textposition="outside")
-                fig1.update_layout(
-                    height=260,
-                    margin=dict(l=10, r=10, t=30, b=10),
-                    xaxis_title="",
+                fig2.update_traces(textposition="outside", textfont_size=11)
+                fig2.update_yaxes(range=[0, mc_max * 1.3])
+                fig2.update_layout(
+                    height=300,
+                    margin=dict(l=40, r=20, t=60, b=80),
+                    xaxis_title="담당자",
+                    yaxis_title="계약 수",
+                    xaxis_tickangle=-45,
+                )
+                st.plotly_chart(fig2, use_container_width=True)
+            elif not mc.empty:
+                st.bar_chart(mc, use_container_width=True, height=300)
+            else:
+                st.info("선택된 조건에서 표시할 담당자 데이터가 없습니다.")
+
+        with c2b:
+            st.markdown("#### 🔥 리스크 등급 분포 (비매칭, 계약 단위)")
+            rc = (
+                viz_base["리스크등급"]
+                .value_counts()
+                .reindex(["HIGH", "MEDIUM", "LOW"])
+                .fillna(0)
+            )
+            if HAS_PLOTLY and rc.sum() > 0:
+                rc_df = rc.reset_index()
+                rc_df.columns = ["리스크등급", "건수"]
+                rc_df["건수"] = rc_df["건수"].astype(int)
+                rc_max = rc_df["건수"].max()
+
+                fig3 = px.bar(
+                    rc_df,
+                    x="리스크등급",
+                    y="건수",
+                    text="건수",
+                )
+                fig3.update_traces(textposition="outside", textfont_size=11)
+                fig3.update_yaxes(range=[0, rc_max * 1.3])
+                fig3.update_layout(
+                    height=300,
+                    margin=dict(l=40, r=20, t=60, b=40),
+                    xaxis_title="리스크등급",
                     yaxis_title="계약 수",
                 )
-                st.plotly_chart(fig1, use_container_width=True)
+                st.plotly_chart(fig3, use_container_width=True)
+            elif rc.sum() > 0:
+                st.bar_chart(rc, use_container_width=True, height=300)
             else:
-                st.bar_chart(bc, use_container_width=True, height=260)
+                st.info("선택된 조건에서 리스크 등급 데이터가 없습니다.")
 
-            c2a, c2b = st.columns(2)
+        st.markdown("---")
 
-            with c2a:
-                st.markdown("#### 👤 담당자별 비매칭 TOP 15 (유니크 계약)")
-                mc = (
-                    unmatched_global.groupby("구역담당자_통합")["계약번호_정제"]
-                    .nunique()
-                    .rename("비매칭계약수")
-                    .sort_values(ascending=False)
+        if "접수일시" in viz_base.columns and viz_base["접수일시"].notna().any():
+            trend = (
+                viz_base.assign(접수일=viz_base["접수일시"].dt.date)
+                .groupby("접수일")["계약번호_정제"]
+                .nunique()
+                .rename("비매칭계약수")
+                .sort_index()
+            )
+            st.markdown("#### 📈 일별 비매칭 계약 추이 (유니크 계약)")
+            if HAS_PLOTLY and not trend.empty:
+                fig4 = px.line(
+                    trend.reset_index(),
+                    x="접수일",
+                    y="비매칭계약수",
                 )
-                mc = mc[mc.index.astype(str).str.strip() != ""].head(15)
-                if HAS_PLOTLY and not mc.empty:
-                    fig2 = px.bar(
-                        mc.reset_index(),
-                        x="구역담당자_통합",
-                        y="비매칭계약수",
-                        text="비매칭계약수",
-                    )
-                    fig2.update_traces(textposition="outside")
-                    fig2.update_layout(
-                        height=300,
-                        margin=dict(l=10, r=10, t=30, b=60),
-                        xaxis_title="담당자",
-                        yaxis_title="계약 수",
-                        xaxis_tickangle=-45,
-                    )
-                    st.plotly_chart(fig2, use_container_width=True)
-                else:
-                    st.bar_chart(mc, use_container_width=True, height=300)
+                fig4.update_layout(
+                    height=260,
+                    margin=dict(l=40, r=20, t=40, b=40),
+                    xaxis_title="접수일",
+                    yaxis_title="비매칭 계약 수",
+                )
+                st.plotly_chart(fig4, use_container_width=True)
+            elif not trend.empty:
+                st.line_chart(trend, use_container_width=True, height=260)
+            else:
+                st.info("일별 추이 데이터가 없습니다.")
 
-            with c2b:
-                st.markdown("#### 🔥 리스크 등급 분포 (비매칭, 계약 단위)")
-                rc = (
-                    unmatched_global["리스크등급"]
+        # 선택한 담당자 레이더 차트 (HIGH/MEDIUM/LOW 비율)
+        if sel_mgr_viz != "(전체)" and HAS_PLOTLY:
+            mgr_data = viz_base[
+                viz_base["구역담당자_통합"].astype(str) == sel_mgr_viz
+            ]
+            if not mgr_data.empty:
+                radar = (
+                    mgr_data["리스크등급"]
                     .value_counts()
                     .reindex(["HIGH", "MEDIUM", "LOW"])
                     .fillna(0)
                 )
-                if HAS_PLOTLY and not rc.empty:
-                    rc_df = rc.reset_index()
-                    rc_df.columns = ["리스크등급", "건수"]
-                    rc_df["건수"] = rc_df["건수"].astype(int)
-
-                    fig3 = px.bar(
-                        rc_df,
-                        x="리스크등급",
-                        y="건수",
-                        text="건수",
-                    )
-                    fig3.update_traces(textposition="outside")
-                    fig3.update_layout(
-                        height=300,
-                        margin=dict(l=10, r=10, t=30, b=10),
-                        xaxis_title="리스크등급",
-                        yaxis_title="계약 수",
-                    )
-                    st.plotly_chart(fig3, use_container_width=True)
-                else:
-                    st.bar_chart(rc, use_container_width=True, height=300)
-
-            st.markdown("---")
-
-            if "접수일시" in unmatched_global.columns:
-                trend = (
-                    unmatched_global.assign(접수일=unmatched_global["접수일시"].dt.date)
-                    .groupby("접수일")["계약번호_정제"]
-                    .nunique()
-                    .rename("비매칭계약수")
-                    .sort_index()
+                radar_df = pd.DataFrame(
+                    {
+                        "리스크": ["HIGH", "MEDIUM", "LOW"],
+                        "계약수": radar.values,
+                    }
                 )
-                st.markdown("#### 📈 일별 비매칭 계약 추이 (유니크 계약)")
-                if HAS_PLOTLY and not trend.empty:
-                    fig4 = px.line(
-                        trend.reset_index(),
-                        x="접수일",
-                        y="비매칭계약수",
-                    )
-                    fig4.update_layout(
-                        height=260,
-                        margin=dict(l=10, r=10, t=30, b=10),
-                        xaxis_title="접수일",
-                        yaxis_title="비매칭 계약 수",
-                    )
-                    st.plotly_chart(fig4, use_container_width=True)
-                else:
-                    st.line_chart(trend, use_container_width=True, height=260)
-
-            # 선택한 담당자 레이더 차트 (HIGH/MEDIUM/LOW 비율)
-            if sel_mgr_viz != "(전체)":
-                mgr_data = unmatched_global[
-                    unmatched_global["구역담당자_통합"].astype(str) == sel_mgr_viz
-                ]
-                if not mgr_data.empty and HAS_PLOTLY:
-                    radar = (
-                        mgr_data["리스크등급"]
-                        .value_counts()
-                        .reindex(["HIGH", "MEDIUM", "LOW"])
-                        .fillna(0)
-                    )
-                    radar_df = pd.DataFrame(
-                        {
-                            "리스크": ["HIGH", "MEDIUM", "LOW"],
-                            "계약수": radar.values,
-                        }
-                    )
-                    fig_radar = px.line_polar(
-                        radar_df,
-                        r="계약수",
-                        theta="리스크",
-                        line_close=True,
-                    )
-                    fig_radar.update_layout(
-                        height=320,
-                        margin=dict(l=10, r=10, t=40, b=10),
-                        title=f"🌐 {sel_mgr_viz} 담당자의 리스크 프로파일",
-                    )
-                    st.plotly_chart(fig_radar, use_container_width=True)
+                fig_radar = px.line_polar(
+                    radar_df,
+                    r="계약수",
+                    theta="리스크",
+                    line_close=True,
+                )
+                fig_radar.update_layout(
+                    height=320,
+                    margin=dict(l=40, r=20, t=60, b=20),
+                    title=f"🌐 {sel_mgr_viz} 담당자의 리스크 프로파일",
+                )
+                st.plotly_chart(fig_radar, use_container_width=True)
 
 # ====================================================
 # TAB ALL — VOC 전체 (계약번호 기준 요약)
@@ -1539,13 +1559,12 @@ with tab_alert:
 
     st.markdown(
         """
-        담당자 파일(contact_map.xlsx 또는 영업구역담당자_251204.xlsx)을 자동 매핑하여  
+        담당자 파일(contact_map.xlsx)을 자동 매핑하여  
         비매칭(X) 계약 건을 **구역담당자별로 이메일로 발송**할 수 있습니다.
         """
     )
 
     if contact_df.empty:
-        # 커스텀 경고 박스 + Streamlit warning
         st.markdown(
             """
             <div style="
@@ -1558,7 +1577,7 @@ with tab_alert:
                 line-height:1.45;
             ">
             <b>⚠ 담당자 매핑 파일을 찾을 수 없습니다.</b><br>
-            '영업구역담당자_251204.xlsx' 파일이 저장소 루트(/) 위치에 있는지 확인하세요.<br>
+            'contact_map.xlsx' 파일이 저장소 루트(/) 위치에 있는지 확인하세요.<br>
             담당자 알림 탭에서는 이메일 주소를 직접 입력하여 사용할 수 있습니다.
             </div>
             """,
@@ -1567,7 +1586,7 @@ with tab_alert:
 
         st.warning(
             "⚠ 담당자 매핑 파일이 업로드되지 않았습니다.\n"
-            "contact_map.xlsx 또는 영업구역담당자_251204.xlsx 파일을 저장소에 올려주세요."
+            "contact_map.xlsx 파일을 저장소에 올려주세요."
         )
     else:
         st.success(f"담당자 매핑 파일 로드 완료 — 총 {len(contact_df)}명")
