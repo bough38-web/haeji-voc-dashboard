@@ -743,14 +743,6 @@ sel_fee_band = st.sidebar.radio(
     index=0,
     key="filter_fee_band",
 )
-
-sel_fee_band = st.sidebar.radio(
-    "💰 월정료 구간",
-    options=fee_bands,
-    index=0,
-    key="filter_fee_band",
-)
-
 st.sidebar.markdown("---")
 st.sidebar.caption(f"마지막 갱신: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
 
