@@ -13,6 +13,39 @@ ADMIN_CODE = "C3A"
 # CONTACT_MAP 파일 경로
 CONTACT_PATH = "contact_map.xlsx"
 
+import streamlit as st
+import pandas as pd
+
+try:
+    import plotly.express as px
+    HAS_PLOTLY = True
+except ImportError:
+    HAS_PLOTLY = False
+
+# ------------------------------------------------
+# 🔹 꼭 제일 위에: force_bar_chart 함수 정의
+# ------------------------------------------------
+def force_bar_chart(df, x, y, height=280):
+    if df.empty:
+        df = pd.DataFrame({x: ["데이터없음"], y: [0]})
+    if HAS_PLOTLY:
+        fig = px.bar(df, x=x, y=y, text=y)
+        fig.update_traces(textposition="outside", textfont_size=11)
+        max_y = df[y].max()
+        fig.update_yaxes(range=[0, max_y * 1.3 if max_y > 0 else 1])
+        fig.update_layout(height=height, margin=dict(l=40, r=20, t=60, b=40))
+        st.plotly_chart(fig, use_container_width=True)
+    else:
+        st.bar_chart(df.set_index(x)[y], height=height, use_container_width=True)
+
+# ... 이후에 데이터 로딩, 필터, 탭 구성 등 ...
+
+# 예: TAB VIZ 호출 부분
+with st.tabs(["예시"])[0]:
+    # dummy data
+    bc = pd.DataFrame({"관리지사": ["A","B"], "비매칭계약수":[5,3]})
+    force_bar_chart(bc, "관리지사", "비매칭계약수", height=260)
+
 # 연락처 매핑 로드
 def load_contact_map(path: str) -> dict:
     if not os.path.exists(path):
