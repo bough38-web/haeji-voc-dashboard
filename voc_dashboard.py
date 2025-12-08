@@ -1947,9 +1947,9 @@ with tab_drill:
 
         with c_left:
              st.markdown("#### 📘 VOC 이력 (전체)")
-                if voc_hist.empty:
+                 if voc_hist.empty:
              st.info("VOC 이력이 없습니다.")
-              else:
+                 else:
              st.dataframe(
                 style_risk(voc_hist[display_cols]),
                  use_container_width=True,
@@ -1957,7 +1957,7 @@ with tab_drill:
          )
         with c_right:
              st.markdown("#### 📂 기타 출처 이력 (해지시설/요청/설변/정지/파이프라인)")
-                if other_hist.empty:
+                 if other_hist.empty:
              st.info("기타 출처 데이터가 없습니다.")
                 else:
              st.dataframe(
