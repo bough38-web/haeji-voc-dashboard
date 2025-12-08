@@ -1068,49 +1068,43 @@ with tab_viz:
             st.plotly_chart(fig_radar, use_container_width=True)
 
     # ======================================================
-    # 6) 통합 워드클라우드 (등록내용 + 처리내용 + 해지상세 + VOC유형소)
+    # 6) 텍스트 키워드 빈도 분석 (WordCloud 대체 Plotly 버전)
     # ======================================================
-    st.markdown("### 📝 워드 클라우드 분석 (등록내용 + 처리내용 + 해지상세 + VOC유형소)")
+    st.markdown("### 📝 텍스트 키워드 분석 (등록내용 + 처리내용 + 해지상세 + VOC유형소)")
 
     text_cols = ["등록내용", "처리내용", "해지상세", "VOC유형소"]
-
-    # 실제 존재하는 컬럼만 수집
     available_cols = [c for c in text_cols if c in viz_filtered.columns]
 
     if not available_cols:
         st.info("분석 가능한 텍스트 컬럼이 없습니다.")
     else:
-        # 모든 텍스트 합치기
-        text_list = []
+        # 텍스트 합치기
+        texts = []
         for col in available_cols:
-            text_list.extend(
-                viz_filtered[col]
-                .dropna()
-                .astype(str)
-                .tolist()
+            texts.extend(
+                viz_filtered[col].dropna().astype(str).tolist()
             )
 
-        joined_text = " ".join(text_list)
+        full_text = " ".join(texts)
 
-        if len(joined_text.strip()) < 5:
-            st.info("워드클라우드를 생성할 만큼 텍스트 데이터가 충분하지 않습니다.")
+        if len(full_text.strip()) < 5:
+            st.info("텍스트 데이터가 충분하지 않아 분석할 수 없습니다.")
         else:
-            from wordcloud import WordCloud
-            import matplotlib.pyplot as plt
+            import re
+            from collections import Counter
 
-            wc = WordCloud(
-                font_path=None,          # 필요하면 한글폰트 경로 지정
-                background_color="white",
-                width=900,
-                height=550,
-                colormap="tab20"
-            ).generate(joined_text)
+            # 한글/영문 단어만 추출
+            words = re.findall(r"[가-힣A-Za-z]{2,}", full_text)
 
-            fig, ax = plt.subplots(figsize=(11, 6))
-            ax.imshow(wc, interpolation="bilinear")
-            ax.axis("off")
+            if not words:
+                st.info("분석 가능한 키워드가 없습니다.")
+            else:
+                freq = Counter(words).most_common(50)
 
-            st.pyplot(fig)
+                freq_df = pd.DataFrame(freq, columns=["단어", "빈도"])
+
+                st.markdown("#### 🔍 최다 빈도 단어 TOP 50")
+                force_bar_chart(freq_df, "단어", "빈도", height=350)
 
 # ----------------------------------------------------
 # TAB ALL — VOC 전체 (계약번호 기준 요약)
