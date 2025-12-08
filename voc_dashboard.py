@@ -499,6 +499,10 @@ address_cols = [c for c in df.columns if "주소" in str(c)]
 df_voc = df[df.get("출처") == "해지VOC"].copy()
 df_other = df[df.get("출처") != "해지VOC"].copy()
 
+# 👉 여기서 SP 필터 적용
+if "담당유형" in df_voc.columns:
+    df_voc = df_voc[df_voc["담당유형"].astype(str) == "SP"]
+
 other_sets = {
     src: set(df_other[df_other["출처"] == src]["계약번호_정제"].dropna())
     for src in ["해지시설", "해지요청", "설변", "정지", "해지파이프라인"]
