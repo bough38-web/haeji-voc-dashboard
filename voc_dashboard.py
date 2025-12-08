@@ -1596,12 +1596,12 @@ else:
                 with col2:
                     if LOGIN_TYPE == "admin":   # 관리자만 삭제 가능
                         if st.button("🗑 삭제", key=f"del_{idx}"):
-                        fb_all = fb_all.drop(index=idx)
-                        st.session_state["feedback_df"] = fb_all
-                        save_feedback(FEEDBACK_PATH, fb_all)
-                        st.success("삭제 완료!")
-                        st.rerun()
-                        st.markdown("</div>", unsafe_allow_html=True)
+                            fb_all = fb_all.drop(index=idx)
+                            st.session_state["feedback_df"] = fb_all
+                            save_feedback(FEEDBACK_PATH, fb_all)
+                            st.success("삭제 완료!")
+                            st.rerun()
+                            st.markdown("</div>", unsafe_allow_html=True)
 
     # 새 처리내용 입력
     st.markdown("### ➕ 빠른 활동등록")
