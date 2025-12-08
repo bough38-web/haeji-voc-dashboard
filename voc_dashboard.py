@@ -1154,8 +1154,32 @@ with tab_viz:
             fig_radar.update_layout(height=320)
             st.plotly_chart(fig_radar, use_container_width=True)
 
+
     # ======================================================
-    # 6) Drill-down
+    # 6) 텍스트 키워드 분석
+    # ======================================================
+    st.markdown("---")
+    st.markdown("### 📝 텍스트 키워드 분석 (등록내용 + 처리내용 + 해지상세 + VOC유형소)")
+
+    text_cols = ["등록내용", "처리내용", "해지상세", "VOC유형소"]
+    available_cols = [c for c in text_cols if c in viz_filtered.columns]
+
+    if available_cols:
+        texts = []
+        for col in available_cols:
+            texts.extend(viz_filtered[col].dropna().astype(str).tolist())
+
+        import re
+        from collections import Counter
+
+        words = re.findall(r"[가-힣A-Za-z]{2,}", " ".join(texts))
+        freq_df = pd.DataFrame(Counter(words).most_common(50), columns=["단어", "빈도"])
+
+        st.markdown("#### 🔍 최다 빈도 단어 TOP 50")
+        force_bar_chart(freq_df, "단어", "빈도", height=350)
+
+    # ======================================================
+    # 7) Drill-down
     # ======================================================
     st.markdown("---")
     st.markdown("### 🔍 상세 Drill-down (지사 / 담당자)")
@@ -1181,29 +1205,6 @@ with tab_viz:
             viz_filtered["구역담당자_통합"].astype(str) == drill_mgr
         ]
         st.dataframe(df_md[display_cols], height=300, use_container_width=True)
-
-    # ======================================================
-    # 7) 텍스트 키워드 분석
-    # ======================================================
-    st.markdown("---")
-    st.markdown("### 📝 텍스트 키워드 분석 (등록내용 + 처리내용 + 해지상세 + VOC유형소)")
-
-    text_cols = ["등록내용", "처리내용", "해지상세", "VOC유형소"]
-    available_cols = [c for c in text_cols if c in viz_filtered.columns]
-
-    if available_cols:
-        texts = []
-        for col in available_cols:
-            texts.extend(viz_filtered[col].dropna().astype(str).tolist())
-
-        import re
-        from collections import Counter
-
-        words = re.findall(r"[가-힣A-Za-z]{2,}", " ".join(texts))
-        freq_df = pd.DataFrame(Counter(words).most_common(50), columns=["단어", "빈도"])
-
-        st.markdown("#### 🔍 최다 빈도 단어 TOP 50")
-        force_bar_chart(freq_df, "단어", "빈도", height=350)
 
 # ----------------------------------------------------
 # TAB ALL — VOC 전체 (계약번호 기준 요약)
