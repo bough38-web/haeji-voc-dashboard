@@ -739,9 +739,7 @@ with tab_viz:
     if unmatched_global.empty:
         st.info("현재 조건에서 비매칭(X) 데이터가 없습니다.")
     else:
-        left, right = st.columns([1, 2])
-
-
+#        left, right = st.columns([1, 2])
 
         # ===== 🔥 필터 UI 개선 영역 시작 =====
         st.markdown("""
