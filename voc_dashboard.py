@@ -585,7 +585,28 @@ sel_branches = st.sidebar.pills(
     "🏢 관리지사 선택",
     options=["전체"] + branches_all,
     selection_mode="multi",
+    default=["전체"],          # 👈 기본값: 전체만 선택
     key="filter_branch_btn",
+)
+
+# 리스크 등급 필터
+risk_all = ["HIGH", "MEDIUM", "LOW"]
+sel_risk = st.sidebar.pills(
+    "⚠ 리스크등급",
+    options=risk_all,
+    selection_mode="multi",
+    default=risk_all,
+    key="filter_risk_btn",
+)
+
+# 매칭여부
+match_all = ["매칭(O)", "비매칭(X)"]
+sel_match = st.sidebar.pills(
+    "🔍 매칭여부",
+    options=match_all,
+    selection_mode="multi",
+    default=["비매칭(X)"],     # 👈 기본값: 비매칭만 선택
+    key="filter_match_btn",
 )
 
 # 리스크 등급 필터
@@ -754,14 +775,15 @@ with tab_viz:
 
     colA, colB = st.columns(2)
 
-    # -------------------------
-    # 지사 선택
-    # -------------------------
-    b_opts = ["전체"] + sort_branch(unmatched_global["관리지사"].dropna().unique())
-    sel_b_viz = colA.pills(
+      # -------------------------
+      # 지사 선택
+      # -------------------------
+      b_opts = ["전체"] + sort_branch(unmatched_global["관리지사"].dropna().unique())
+      sel_b_viz = colA.pills(
         "🏢 지사 선택",
         options=b_opts,
         selection_mode="single",
+        default="전체",     # 👈 기본값: 전체
         key="viz_branch",
     )
     sel_b_viz = sel_b_viz[0] if isinstance(sel_b_viz, list) else sel_b_viz
@@ -1049,58 +1071,61 @@ with tab_unmatched:
 
     st.caption("비매칭(X) = 해지 VOC 접수 후 시스템상 활동내역이 확인되지 않은 시설")
 
-    with st.expander("ℹ️ 해지방어 활동시설 안내", expanded=False):
-        st.write(
-            "해지VOC 접수 후 **해지방어 활동내역이 시스템에 등록되지 않은 시설**입니다.\n"
-            "- 실제 현장 대응 여부를 신속히 확인해 주세요.\n"
-            "- 확인 후에는 반드시 `해지상담대상 활동등록` 탭에서 처리내역을 남겨주세요."
+    with st.expander("ℹ️ 해지방어 활동시설 안내", expanded=True):  # 👈 True로 변경
+    st.write(
+        "해지VOC 접수 후 **해지방어 활동내역이 시스템에 등록되지 않은 시설**입니다.\n"
+        "- 실제 현장 대응 여부를 신속히 확인해 주세요.\n"
+        "- 확인 후에는 반드시 `해지상담대상 활동등록` 탭에서 처리내역을 남겨주세요."
         )
 
     if unmatched_global.empty:
         st.info("현재 글로벌 필터 조건에서 비매칭(X) 계약이 없습니다.")
     else:
-        u_col1, u_col2 = st.columns([2, 3])
+        # 🔎 필터 접기/펼치기
+        with st.expander("🔎 지사 / 담당자 / 검색 필터", expanded=False):
+            u_col1, u_col2 = st.columns([2, 3])
 
-        branches_u = ["전체"] + sort_branch(
-            unmatched_global["관리지사"].dropna().unique()
-        )
-        selected_branch_u = u_col1.radio(
-            "지사 선택",
-            options=branches_u,
-            horizontal=True,
-            key="tab2_branch_radio",
-        )
-
-        temp_u_for_mgr = unmatched_global.copy()
-        if selected_branch_u != "전체":
-            temp_u_for_mgr = temp_u_for_mgr[
-                temp_u_for_mgr["관리지사"] == selected_branch_u
-            ]
-
-        mgr_options_u = (
-            ["전체"]
-            + sorted(
-                temp_u_for_mgr["구역담당자_통합"]
-                .dropna()
-                .astype(str)
-                .unique()
-                .tolist()
+            branches_u = ["전체"] + sort_branch(
+                unmatched_global["관리지사"].dropna().unique()
             )
-            if "구역담당자_통합" in temp_u_for_mgr.columns
-            else ["전체"]
-        )
+            selected_branch_u = u_col1.radio(
+                "지사 선택",
+                options=branches_u,
+                horizontal=True,
+                key="tab2_branch_radio",
+            )
 
-        selected_mgr_u = u_col2.radio(
-            "담당자 선택",
-            options=mgr_options_u,
-            horizontal=True,
-            key="tab2_mgr_radio",
-        )
+            temp_u_for_mgr = unmatched_global.copy()
+            if selected_branch_u != "전체":
+                temp_u_for_mgr = temp_u_for_mgr[
+                    temp_u_for_mgr["관리지사"] == selected_branch_u
+                ]
 
-        us1, us2 = st.columns(2)
-        uq_cn = us1.text_input("계약번호 검색(부분)", key="tab2_cn")
-        uq_name = us2.text_input("상호 검색(부분)", key="tab2_name")
+            mgr_options_u = (
+                ["전체"]
+                + sorted(
+                    temp_u_for_mgr["구역담당자_통합"]
+                    .dropna()
+                    .astype(str)
+                    .unique()
+                    .tolist()
+                )
+                if "구역담당자_통합" in temp_u_for_mgr.columns
+                else ["전체"]
+            )
 
+            selected_mgr_u = u_col2.radio(
+                "담당자 선택",
+                options=mgr_options_u,
+                horizontal=True,
+                key="tab2_mgr_radio",
+            )
+
+            us1, us2 = st.columns(2)
+            uq_cn = us1.text_input("계약번호 검색(부분)", key="tab2_cn")
+            uq_name = us2.text_input("상호 검색(부분)", key="tab2_name")
+
+        # ▶ 필터 적용
         temp_u = unmatched_global.copy()
         if selected_branch_u != "전체":
             temp_u = temp_u[temp_u["관리지사"] == selected_branch_u]
@@ -1116,7 +1141,7 @@ with tab_unmatched:
                 temp_u["상호"].astype(str).str.contains(uq_name.strip())
             ]
 
-        if temp_u.empty:
+                if temp_u.empty:
             st.info("조건에 맞는 해지방어 활동시설(비매칭) 계약이 없습니다.")
         else:
             temp_u_sorted = temp_u.sort_values("접수일시", ascending=False)
@@ -1149,6 +1174,7 @@ with tab_unmatched:
                 f"⚠ 해지방어 활동시설(비매칭) 계약 수: **{len(df_u_summary):,} 건**"
             )
 
+            # ▶ 리스트(위쪽)
             st.data_editor(
                 df_u_summary[summary_cols_u].reset_index(drop=True),
                 use_container_width=True,
@@ -1157,7 +1183,7 @@ with tab_unmatched:
                 key="tab2_unmatched_editor",
             )
 
-            # 행 선택 상태 읽기 → selectbox 연동
+            # 행 선택 상태 읽기 → 선택된 계약번호 찾기
             selected_idx = None
             state = st.session_state.get("tab2_unmatched_editor", {})
             selected_rows = []
@@ -1181,6 +1207,7 @@ with tab_unmatched:
                 default_index = selected_idx + 1
 
             st.markdown("### 📂 선택한 계약번호 상세 VOC 이력")
+
             sel_u_contract = st.selectbox(
                 "상세 VOC 이력을 볼 계약 선택 (표 행을 클릭하면 자동 선택됩니다)",
                 options=["(선택)"] + u_contract_list,
@@ -1194,14 +1221,30 @@ with tab_unmatched:
                 ].copy()
                 voc_detail = voc_detail.sort_values("접수일시", ascending=False)
 
-                st.markdown(
-                    f"#### 🔍 `{sel_u_contract}` VOC 상세 이력 ({len(voc_detail)}건)"
-                )
-                st.dataframe(
-                    style_risk(voc_detail[display_cols]),
-                    use_container_width=True,
-                    height=350,
-                )
+                # 🔹 상단 정보 (관리지사/담당자/계약번호/상호/월정료)
+                latest = voc_detail.iloc[0]
+                info_branch = latest.get("관리지사", "")
+                info_mgr = latest.get("구역담당자_통합", "")
+                info_name = latest.get("상호", "")
+                info_fee = latest.get(fee_raw_col, "") if fee_raw_col else ""
+
+                with st.expander("🔍 선택 계약 상세 정보 / VOC 이력", expanded=True):
+                    st.markdown(
+                        f"**관리지사:** {info_branch}  \n"
+                        f"**구역담당자:** {info_mgr}  \n"
+                        f"**계약번호:** {sel_u_contract}  \n"
+                        f"**상호:** {info_name}  \n"
+                        + (f"**{fee_raw_col}:** {info_fee}" if fee_raw_col else "")
+                    )
+
+                    st.markdown(
+                        f"##### VOC 이력 ({len(voc_detail)}건)"
+                    )
+                    st.dataframe(
+                        style_risk(voc_detail[display_cols]),
+                        use_container_width=True,
+                        height=350,
+                    )
 
             st.download_button(
                 "📥 해지방어 활동시설(비매칭) 원천 VOC 행 다운로드 (CSV)",
@@ -1209,7 +1252,6 @@ with tab_unmatched:
                 file_name="해지방어_활동시설_원천행.csv",
                 mime="text/csv",
             )
-
 # ====================================================
 # TAB DRILL — 해지상담대상 활동등록 (계약별 드릴다운)
 # ====================================================
@@ -1231,42 +1273,44 @@ with tab_drill:
     elif match_choice == "비매칭(X)":
         drill_base = drill_base[drill_base["매칭여부"] == "비매칭(X)"]
 
-    d1, d2 = st.columns([2, 3])
-    branches_d = ["전체"] + sort_branch(drill_base["관리지사"].dropna().unique())
-    sel_branch_d = d1.radio(
-        "지사 선택",
-        options=branches_d,
-        horizontal=True,
-        key="tab4_branch_radio",
-    )
-
-    tmp_mgr_d = drill_base.copy()
-    if sel_branch_d != "전체":
-        tmp_mgr_d = tmp_mgr_d[tmp_mgr_d["관리지사"] == sel_branch_d]
-
-    mgr_options_d = (
-        ["전체"]
-        + sorted(
-            tmp_mgr_d["구역담당자_통합"]
-            .dropna()
-            .astype(str)
-            .unique()
-            .tolist()
+            # 🔎 필터 접기/펼치기
+    with st.expander("🔎 지사 / 담당자 / 검색 필터", expanded=False):
+        d1, d2 = st.columns([2, 3])
+        branches_d = ["전체"] + sort_branch(drill_base["관리지사"].dropna().unique())
+        sel_branch_d = d1.radio(
+            "지사 선택",
+            options=branches_d,
+            horizontal=True,
+            key="tab4_branch_radio",
         )
-        if "구역담당자_통합" in tmp_mgr_d.columns
-        else ["전체"]
-    )
 
-    sel_mgr_d = d2.radio(
-        "담당자 선택",
-        options=mgr_options_d,
-        horizontal=True,
-        key="tab4_mgr_radio",
-    )
+        tmp_mgr_d = drill_base.copy()
+        if sel_branch_d != "전체":
+            tmp_mgr_d = tmp_mgr_d[tmp_mgr_d["관리지사"] == sel_branch_d]
 
-    dd1, dd2 = st.columns(2)
-    dq_cn = dd1.text_input("계약번호 검색(부분)", key="tab4_cn")
-    dq_name = dd2.text_input("상호 검색(부분)", key="tab4_name")
+        mgr_options_d = (
+            ["전체"]
+            + sorted(
+                tmp_mgr_d["구역담당자_통합"]
+                .dropna()
+                .astype(str)
+                .unique()
+                .tolist()
+            )
+            if "구역담당자_통합" in tmp_mgr_d.columns
+            else ["전체"]
+        )
+
+        sel_mgr_d = d2.radio(
+            "담당자 선택",
+            options=mgr_options_d,
+            horizontal=True,
+            key="tab4_mgr_radio",
+        )
+
+        dd1, dd2 = st.columns(2)
+        dq_cn = dd1.text_input("계약번호 검색(부분)", key="tab4_cn")
+        dq_name = dd2.text_input("상호 검색(부분)", key="tab4_name")
 
     drill = drill_base.copy()
     if sel_branch_d != "전체":
