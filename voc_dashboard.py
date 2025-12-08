@@ -784,6 +784,26 @@ with tab_viz:
             key="viz_mgr",
         )
 
+
+        def force_bar_chart(df, x, y, height=280):
+    """Plotly 있으면 Plotly, 없으면 Streamlit 그래프. 단, 빈 DF여도 0 표시."""
+    if df.empty:
+        df = pd.DataFrame({x: ["데이터없음"], y: [0]})
+
+    if HAS_PLOTLY:
+        max_y = df[y].max()
+        fig = px.bar(df, x=x, y=y, text=y)
+        fig.update_traces(textposition="outside")
+        fig.update_yaxes(range=[0, max_y * 1.3 if max_y > 0 else 1])
+        fig.update_layout(
+            height=height,
+            margin=dict(l=20, r=20, t=40, b=40),
+        )
+        st.plotly_chart(fig, use_container_width=True)
+    else:
+        st.bar_chart(df.set_index(x)[y], height=height, use_container_width=True)
+
+        
         # 선택값을 반영한 베이스 데이터
         viz_base = unmatched_global.copy()
         if sel_b_viz != "전체":
