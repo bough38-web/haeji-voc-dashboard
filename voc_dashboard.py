@@ -1,7 +1,6 @@
-# ----------------------------------------------------
-# 로그인 시스템 (관리자 / 사용자) — 연락처 뒷 4자리로 로그인
-# ----------------------------------------------------
 import streamlit as st
+import pandas as pd
+import os
 
 # 세션 초기화
 if "login_type" not in st.session_state:
@@ -9,27 +8,44 @@ if "login_type" not in st.session_state:
 if "login_user" not in st.session_state:
     st.session_state["login_user"] = None
 
-ADMIN_CODE = "C3A"   # 관리자 비밀번호
+ADMIN_CODE = "C3A"
 
-# ---- 연락처 매핑 불러오기 예시 ----
-# contact_map.xlsx 로딩 코드 이후에 다음처럼 dict 생성
-# (이미 로딩된 contact_df, manager_contacts 있다고 가정)
+# CONTACT_MAP 파일 경로
+CONTACT_PATH = "contact_map.xlsx"
 
-# contacts_dict: 이름 -> 전화번호 문자열
-contacts_dict = {}
-for name, info in manager_contacts.items():
-    tel = info.get("phone", "").strip()
-    # 전화번호 정제: 숫자만 추출 (예: "-" 제거, 공백 제거)
-    tel = "".join(ch for ch in tel if ch.isdigit())
-    if len(tel) >= 4:
-        contacts_dict[name.strip()] = tel  # 예: "홍길동": "1030507366"
+# 연락처 매핑 로드
+def load_contact_map(path: str) -> dict:
+    if not os.path.exists(path):
+        st.warning(f"담당자 매핑 파일 '{path}' 을(를) 찾을 수 없습니다.")
+        return {}
+    df = pd.read_excel(path)
+    # 컬럼명 자동 탐색 (예: 담당자, 이름, 구역담당자 등)
+    name_col = None
+    phone_col = None
+    for col in df.columns:
+        if any(k in col for k in ["구역담당자", "담당자", "성명", "이름"]):
+            name_col = col
+        if any(k in col for k in ["휴대폰", "전화", "연락처", "핸드폰"]):
+            phone_col = col
+    if name_col is None or phone_col is None:
+        st.warning("담당자 매핑 파일에 이름 또는 전화번호 컬럼이 없습니다.")
+        return {}
+    contact = {}
+    for _, row in df.iterrows():
+        name = str(row[name_col]).strip()
+        tel = str(row[phone_col]).strip()
+        # 전화번호 정제 — 숫자만
+        tel = "".join(ch for ch in tel if ch.isdigit())
+        if len(tel) >= 4 and name:
+            contact[name] = tel
+    return contact
+
+contacts_dict = load_contact_map(CONTACT_PATH)
 
 def login_form():
     st.markdown("## 🔐 로그인")
-
     tab_admin, tab_user = st.tabs(["관리자 로그인", "사용자 로그인"])
 
-    # 관리자 로그인
     with tab_admin:
         pw = st.text_input("관리자 비밀번호", type="password", key="admin_pw")
         if st.button("관리자 로그인"):
@@ -41,7 +57,6 @@ def login_form():
             else:
                 st.error("비밀번호가 올바르지 않습니다.")
 
-    # 사용자 로그인
     with tab_user:
         name = st.text_input("성명", key="user_name")
         input_pw = st.text_input("연락처 뒷 4자리", type="password", key="user_pw")
@@ -58,7 +73,7 @@ def login_form():
                 else:
                     st.error("로그인 실패: 비밀번호가 올바르지 않습니다.")
             else:
-                st.error("등록된 사용자명이 아닙니다 또는 연락처 정보가 없습니다.")
+                st.error("등록된 사용자명이 아니거나 연락처 정보가 없습니다.")
 
 if st.session_state["login_type"] is None:
     login_form()
