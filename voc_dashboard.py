@@ -748,7 +748,6 @@ if fee_raw_col is not None:
 
     # ② 슬라이더는 라디오 범위 이후 "추가 정밀 필터"
     slider_min_won = fee_slider_min * 10000
-    slider_max_won = fee_slider_max * 10000
 
     voc_filtered_global = voc_filtered_global[
         (fee_series >= slider_min_won) & (fee_series <= slider_max_won)
