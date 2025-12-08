@@ -347,14 +347,35 @@ contacts_phone = {
     if info.get("phone", "")
 }
 
+
+# -----------------------------------------
+# ⭐ 지사별 중간관리자 비밀번호 관리
+# -----------------------------------------
+BRANCH_ADMIN_PW = {
+    "중앙": "C001",
+    "강북": "C002",
+    "서대문": "C003",
+    "고양": "C004",
+    "의정부": "C005",
+    "남양주": "C006",
+    "강릉": "C007",
+    "원주": "C008",
+}
+
 # ==============================
 # 6. 로그인 폼 (연락처 뒷 4자리)
 # ==============================
 def login_form():
-    st.markdown("## 🔐 로그인")
-    tab_admin, tab_user = st.tabs(["관리자 로그인", "사용자 로그인"])
 
-    # 관리자 로그인
+    st.markdown("## 🔐 로그인")
+
+    tab_admin, tab_user, tab_branch_admin = st.tabs(
+        ["관리자 로그인", "사용자 로그인", "중간관리자 로그인"]
+    )
+
+    # --------------------
+    # 🔹 최고관리자 로그인
+    # --------------------
     with tab_admin:
         pw = st.text_input("관리자 비밀번호", type="password", key="admin_pw")
         if st.button("관리자 로그인"):
@@ -366,25 +387,52 @@ def login_form():
             else:
                 st.error("비밀번호가 올바르지 않습니다.")
 
-    # 사용자 로그인
+    # --------------------
+    # 🔹 사용자 로그인
+    # --------------------
     with tab_user:
         name = st.text_input("성명", key="user_name")
         input_pw = st.text_input("연락처 뒷 4자리", type="password", key="user_pw")
 
         if st.button("사용자 로그인"):
-            real_tel = contacts_phone.get(name.strip())
-            if real_tel:
-                tel_digits = "".join(ch for ch in str(real_tel) if ch.isdigit())
-                real_pw = tel_digits[-4:] if len(tel_digits) >= 4 else ""
-                if input_pw == real_pw and real_pw != "":
-                    st.session_state["login_type"] = "user"
-                    st.session_state["login_user"] = name.strip()
-                    st.success(f"{name} 님 로그인 성공")
-                    st.rerun()
-                else:
-                    st.error("로그인 실패: 비밀번호가 올바르지 않습니다.")
+
+            user_info = manager_contacts.get(name.strip())
+            if not user_info:
+                st.error("등록된 사용자명이 아닙니다.")
+                return
+
+            real_tel = user_info.get("phone", "")
+            real_pw = real_tel[-4:] if len(real_tel) >= 4 else None
+
+            if real_pw and input_pw == real_pw:
+                st.session_state["login_type"] = "user"
+                st.session_state["login_user"] = name.strip()
+                st.success(f"{name} 님 로그인 성공")
+                st.rerun()
             else:
-                st.error("등록된 사용자명이 아니거나 연락처 정보가 없습니다.")
+                st.error("비밀번호가 올바르지 않습니다.")
+
+    # --------------------
+    # 🔹 지사 중간관리자 로그인
+    # --------------------
+    with tab_branch_admin:
+        branch = st.selectbox("담당 지사 선택", list(BRANCH_ADMIN_PW.keys()), key="branch_select")
+        name = st.text_input("중간관리자 성명", key="branch_admin_name")
+        pw = st.text_input("중간관리자 비밀번호", type="password", key="branch_admin_pw")
+
+        if st.button("중간관리자 로그인"):
+            correct_pw = BRANCH_ADMIN_PW.get(branch)
+
+            if pw == correct_pw:
+                st.session_state["login_type"] = "branch_admin"
+                st.session_state["login_user"] = name.strip()
+                st.session_state["login_branch"] = branch
+                st.success(f"{branch} 지사 중간관리자 로그인 성공!")
+                st.rerun()
+            else:
+                st.error("비밀번호가 올바르지 않습니다.")
+
+
 
 # 로그인 처리
 if st.session_state["login_type"] is None:
@@ -393,6 +441,7 @@ if st.session_state["login_type"] is None:
 
 LOGIN_TYPE = st.session_state["login_type"]   # "admin" or "user"
 LOGIN_USER = st.session_state["login_user"]   # 관리자: ADMIN / 사용자: 성명
+
 
 # ==============================
 # 7. 기본 전처리 (지사, 담당자, 출처 등)
@@ -687,8 +736,28 @@ sel_fee_band = st.sidebar.radio(
 st.sidebar.markdown("---")
 st.sidebar.caption(f"마지막 갱신: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
 
-# 글로벌 필터 적용
-voc_filtered_global = df_voc.copy()
+# ---------------------------------------
+# 🔐 로그인 타입별 데이터 접근 제어
+# ---------------------------------------
+voc_filtered_role = df_voc.copy()
+
+# ➤ 일반 사용자: 본인 담당 데이터만
+if LOGIN_TYPE == "user":
+    voc_filtered_role = voc_filtered_role[
+        voc_filtered_role["구역담당자_통합"].astype(str) == LOGIN_USER
+    ]
+
+# ➤ 중간관리자: 본인 지사 전체 데이터
+elif LOGIN_TYPE == "branch_admin":
+    branch = st.session_state.get("login_branch", "")
+    voc_filtered_role = voc_filtered_role[
+        voc_filtered_role["관리지사"].astype(str) == branch
+    ]
+
+# ➤ 최고관리자(admin): 모든 데이터 접근 가능
+
+# 이후 글로벌 필터 적용
+voc_filtered_global = voc_filtered_role.copy()
 
 # 날짜 필터
 if dr and isinstance(dr, tuple) and len(dr) == 2:
@@ -745,7 +814,7 @@ if LOGIN_TYPE == "user":
             voc_filtered_global["구역담당자_통합"].astype(str) == str(LOGIN_USER)
         ]
 
-# 최종 비매칭 풀
+# 비매칭 데이터
 unmatched_global = voc_filtered_global[
     voc_filtered_global["매칭여부"] == "비매칭(X)"
 ].copy()
@@ -775,16 +844,48 @@ st.markdown("---")
 # ==============================
 # 11. 탭 구성
 # ==============================
-tab_viz, tab_all, tab_unmatched, tab_drill, tab_filter, tab_alert = st.tabs(
+tab_viz, tab_all, tab_unmatched, tab_drill, tab_filter, tab_alert, tab_branch_admin_report = st.tabs(
     [
         "📊 지사/담당자 시각화",
         "📘 VOC 전체(계약 기준)",
         "🧯 해지방어 활동시설(비매칭)",
         "🔍 해지상담대상 활동등록",
-        "🎯 해지방어 활동시설 정밀 필터(VOC유형소)",
-        "📨 담당자 알림(베타)",
+        "🎯 정밀 필터",
+        "📨 담당자 알림",
+        "🏢 지사 관리자 전용",
     ]
 )
+
+# ----------------------------------------------------
+# 🏢 지사 관리자 전용 대시보드
+# ----------------------------------------------------
+with tab_branch_admin_report:
+    if LOGIN_TYPE != "branch_admin":
+        st.info("이 탭은 지사 관리자만 접근할 수 있습니다.")
+    else:
+        branch = st.session_state.get("login_branch", "")
+        st.subheader(f"🏢 {branch} 지사 관리자 대시보드")
+
+        df_branch = df_voc[df_voc["관리지사"] == branch]
+
+        st.metric("총 VOC 건수", len(df_branch))
+        st.metric("비매칭 계약 수", df_branch[df_branch["매칭여부"] == "비매칭(X)"]["계약번호_정제"].nunique())
+
+        st.markdown("### 🔥 리스크별 비매칭 구조")
+        rc = (
+            df_branch[df_branch["매칭여부"] == "비매칭(X)"]["리스크등급"]
+            .value_counts()
+            .reindex(["HIGH","MEDIUM","LOW"])
+            .fillna(0)
+        )
+        st.bar_chart(rc)
+
+        st.markdown("### 📋 지사 전체 비매칭 리스트")
+        st.dataframe(
+            df_branch[df_branch["매칭여부"]=="비매칭(X)"][display_cols],
+            use_container_width=True,
+            height=450,
+        )
 
 # ----------------------------------------------------
 # TAB VIZ — 지사 / 담당자 시각화
@@ -1123,8 +1224,10 @@ with st.expander("ℹ️ 해지방어 활동시설 안내", expanded=True):
 
         # ▶ 필터 적용
         temp_u = unmatched_global.copy()
+        
         if selected_branch_u != "전체":
             temp_u = temp_u[temp_u["관리지사"] == selected_branch_u]
+            
         if selected_mgr_u != "전체":
             temp_u = temp_u[temp_u["구역담당자_통합"].astype(str) == selected_mgr_u]
 
