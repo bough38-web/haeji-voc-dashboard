@@ -1273,10 +1273,16 @@ with tab_drill:
     elif match_choice == "비매칭(X)":
         drill_base = drill_base[drill_base["매칭여부"] == "비매칭(X)"]
 
-            # 🔎 필터 접기/펼치기
-with st.expander("🔎 지사 / 담당자 / 검색 필터", expanded=False):
-    d1, d2 = st.columns([2, 3])
-        branches_d = ["전체"] + sort_branch(drill_base["관리지사"].dropna().unique())
+    # --------------------------------------
+    # 🔎 필터 접기/펼치기 (정상 들여쓰기)
+    # --------------------------------------
+    with st.expander("🔎 지사 / 담당자 / 검색 필터", expanded=False):
+
+        d1, d2 = st.columns([2, 3])
+
+        branches_d = ["전체"] + sort_branch(
+            drill_base["관리지사"].dropna().unique()
+        )
         sel_branch_d = d1.radio(
             "지사 선택",
             options=branches_d,
@@ -1312,6 +1318,9 @@ with st.expander("🔎 지사 / 담당자 / 검색 필터", expanded=False):
         dq_cn = dd1.text_input("계약번호 검색(부분)", key="tab4_cn")
         dq_name = dd2.text_input("상호 검색(부분)", key="tab4_name")
 
+    # --------------------------------------
+    # 🔍 필터 적용
+    # --------------------------------------
     drill = drill_base.copy()
     if sel_branch_d != "전체":
         drill = drill[drill["관리지사"] == sel_branch_d]
@@ -1327,6 +1336,9 @@ with st.expander("🔎 지사 / 담당자 / 검색 필터", expanded=False):
             drill["상호"].astype(str).str.contains(dq_name.strip())
         ]
 
+    # --------------------------------------
+    # 결과 없을 때
+    # --------------------------------------
     if drill.empty:
         st.info("조건에 맞는 계약이 없습니다. 필터를 조정해보세요.")
         sel_cn = None
@@ -1381,6 +1393,9 @@ with st.expander("🔎 지사 / 담당자 / 검색 필터", expanded=False):
             key="tab4_cn_selectbox",
         )
 
+        # --------------------------------------
+        # 선택된 계약 상세 이력 표시
+        # --------------------------------------
         if sel_cn:
             voc_hist = df_voc[
                 df_voc["계약번호_정제"].astype(str) == str(sel_cn)
@@ -1444,47 +1459,6 @@ with st.expander("🔎 지사 / 담당자 / 검색 필터", expanded=False):
                         use_container_width=True,
                         height=320,
                     )
-
-            st.markdown("---")
-
-            dcol1, dcol2 = st.columns(2)
-
-            if not voc_hist.empty:
-                dcol1.download_button(
-                    "📥 선택 계약 VOC 이력 다운로드 (CSV)",
-                    voc_hist.to_csv(index=False).encode("utf-8-sig"),
-                    file_name=f"VOC이력_{sel_cn}.csv",
-                    mime="text/csv",
-                )
-
-            export_frames = []
-            if not voc_hist.empty:
-                v_exp = voc_hist.copy()
-                v_exp.insert(0, "구분", "VOC")
-                export_frames.append(v_exp)
-
-            if not other_hist.empty:
-                o_exp = other_hist.copy()
-                o_exp.insert(0, "구분", "기타출처")
-                export_frames.append(o_exp)
-
-            fb_all_for_export = st.session_state["feedback_df"]
-            fb_sel_export = fb_all_for_export[
-                fb_all_for_export["계약번호_정제"].astype(str) == str(sel_cn)
-            ].copy()
-            if not fb_sel_export.empty:
-                f_exp = fb_sel_export.copy()
-                f_exp.insert(0, "구분", "피드백")
-                export_frames.append(f_exp)
-
-            if export_frames:
-                merged_export = pd.concat(export_frames, ignore_index=True)
-                dcol2.download_button(
-                    "📥 선택 계약 통합 이력 다운로드 (CSV)",
-                    merged_export.to_csv(index=False).encode("utf-8-sig"),
-                    file_name=f"통합이력_{sel_cn}.csv",
-                    mime="text/csv",
-                )
 
 # ----------------------------------------------------
 # 글로벌 피드백 이력 & 입력 (선택된 sel_cn 기준)
