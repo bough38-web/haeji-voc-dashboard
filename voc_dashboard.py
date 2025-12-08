@@ -799,27 +799,21 @@ if sel_match and "매칭여부" in voc_filtered_global.columns:
         voc_filtered_global["매칭여부"].isin(sel_match)
     ]
 
-# 월정료 구간 필터
-if sel_fee_band != "전체" and fee_raw_col is not None:
-    fee = (
-        voc_filtered_global[fee_raw_col]
-        .astype(str)
-        .str.replace(",", "", regex=False)
-        .astype(float)
-        .fillna(-1)
-    )
-    if sel_fee_band == "0~10만":
-        voc_filtered_global = voc_filtered_global[(fee >= 0) & (fee < 100000)]
-    elif sel_fee_band == "10만~20만":
-        voc_filtered_global = voc_filtered_global[(fee >= 100000) & (fee < 200000)]
-    elif sel_fee_band == "20만~30만":
-        voc_filtered_global = voc_filtered_global[(fee >= 200000) & (fee < 300000)]
-    elif sel_fee_band == "30만~40만":
-        voc_filtered_global = voc_filtered_global[(fee >= 300000) & (fee < 400000)]
-    elif sel_fee_band == "40만~50만":
-        voc_filtered_global = voc_filtered_global[(fee >= 400000) & (fee < 500000)]
-    elif sel_fee_band == "50만 이상":
-        voc_filtered_global = voc_filtered_global[(fee >= 500000)]
+# ---------------------------------------
+# 💰 월정료 구간 필터 (3구간 단순화)
+# ---------------------------------------
+if sel_fee_band != "전체":
+    # 숫자 필드 사용
+    fee_series = voc_filtered_global["월정료_수치"].fillna(-1)
+
+    if sel_fee_band == "10만 이하":
+        voc_filtered_global = voc_filtered_global[(fee_series >= 0) & (fee_series < 100000)]
+
+    elif sel_fee_band == "10만~30만":
+        voc_filtered_global = voc_filtered_global[(fee_series >= 100000) & (fee_series < 300000)]
+
+    elif sel_fee_band == "30만 이상":
+        voc_filtered_global = voc_filtered_global[(fee_series >= 300000)]
 
 # 로그인 타입별 접근 제한(이중 안전장치)
 if LOGIN_TYPE == "user":
