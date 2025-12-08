@@ -804,15 +804,42 @@ if sel_match and "매칭여부" in voc_filtered_global.columns:
         voc_filtered_global["매칭여부"].isin(sel_match)
     ]
 
+# 💰 월정료 필터 (라디오 + 슬라이더)
+if fee_raw_col is not None and "월정료_수치" in voc_filtered_global.columns:
+    fee_series = voc_filtered_global["월정료_수치"].fillna(-1)
 
-# 로그인 타입별 접근 제한(이중 안전장치)
+    # ① 라디오 구간 필터
+    if sel_fee_band_radio == "10만 이하":
+        voc_filtered_global = voc_filtered_global[
+            (fee_series >= 0) & (fee_series < 100000)
+        ]
+    elif sel_fee_band_radio == "10만~30만":
+        voc_filtered_global = voc_filtered_global[
+            (fee_series >= 100000) & (fee_series < 300000)
+        ]
+    elif sel_fee_band_radio == "30만 이상":
+        voc_filtered_global = voc_filtered_global[
+            (fee_series >= 300000)
+        ]
+    # "전체"일 때는 라디오 필터 패스
+
+    # ② 슬라이더 추가 정밀 필터 (만원 → 원)
+    slider_min_won = fee_slider_min * 10000
+    slider_max_won = fee_slider_max * 10000
+
+    fee_series = voc_filtered_global["월정료_수치"].fillna(-1)
+    voc_filtered_global = voc_filtered_global[
+        (fee_series >= slider_min_won) & (fee_series <= slider_max_won)
+    ]
+
+# 로그인 타입별 접근 제한 (사용자일 경우 한 번 더 안전하게)
 if LOGIN_TYPE == "user":
     if "구역담당자_통합" in voc_filtered_global.columns:
         voc_filtered_global = voc_filtered_global[
             voc_filtered_global["구역담당자_통합"].astype(str) == str(LOGIN_USER)
         ]
 
-# 비매칭 데이터 (최종)
+# 비매칭 데이터
 unmatched_global = voc_filtered_global[
     voc_filtered_global["매칭여부"] == "비매칭(X)"
 ].copy()
