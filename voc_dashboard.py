@@ -1,5 +1,5 @@
 # ----------------------------------------------------
-# 로그인 시스템 (관리자 / 사용자)
+# 로그인 시스템 (관리자 / 사용자) — 연락처 뒷 4자리로 로그인
 # ----------------------------------------------------
 import streamlit as st
 
@@ -9,27 +9,27 @@ if "login_type" not in st.session_state:
 if "login_user" not in st.session_state:
     st.session_state["login_user"] = None
 
-ADMIN_CODE = "C3A"   # 관리자 패스워드
-
-
-# 로그인 시스템 (관리자 / 사용자) — 연락처 뒤 4자리로 로그인
-
-if "login_type" not in st.session_state:
-    st.session_state["login_type"] = None
-if "login_user" not in st.session_state:
-    st.session_state["login_user"] = None
-
 ADMIN_CODE = "C3A"   # 관리자 비밀번호
 
-# 예: 사용자 연락처 매핑 (예시 — 실제로는 contact_map 또는 DB에서 불러오기)
-# contacts_dict = { "홍길동": "1030507366", "김철수": "01012345678", ... }
+# ---- 연락처 매핑 불러오기 예시 ----
+# contact_map.xlsx 로딩 코드 이후에 다음처럼 dict 생성
+# (이미 로딩된 contact_df, manager_contacts 있다고 가정)
+
+# contacts_dict: 이름 -> 전화번호 문자열
+contacts_dict = {}
+for name, info in manager_contacts.items():
+    tel = info.get("phone", "").strip()
+    # 전화번호 정제: 숫자만 추출 (예: "-" 제거, 공백 제거)
+    tel = "".join(ch for ch in tel if ch.isdigit())
+    if len(tel) >= 4:
+        contacts_dict[name.strip()] = tel  # 예: "홍길동": "1030507366"
 
 def login_form():
     st.markdown("## 🔐 로그인")
 
     tab_admin, tab_user = st.tabs(["관리자 로그인", "사용자 로그인"])
 
-    # --- 관리자 로그인 ---
+    # 관리자 로그인
     with tab_admin:
         pw = st.text_input("관리자 비밀번호", type="password", key="admin_pw")
         if st.button("관리자 로그인"):
@@ -41,25 +41,24 @@ def login_form():
             else:
                 st.error("비밀번호가 올바르지 않습니다.")
 
-    # --- 사용자 로그인 ---
+    # 사용자 로그인
     with tab_user:
         name = st.text_input("성명", key="user_name")
         input_pw = st.text_input("연락처 뒷 4자리", type="password", key="user_pw")
 
         if st.button("사용자 로그인"):
-            # 예: contacts_dict 에 사용자명으로 연락처가 저장되어 있다고 가정
             real_tel = contacts_dict.get(name.strip())
             if real_tel:
-                real_pw = real_tel[-4:]  # 뒤 4자리
+                real_pw = real_tel[-4:]
                 if input_pw == real_pw:
                     st.session_state["login_type"] = "user"
                     st.session_state["login_user"] = name.strip()
                     st.success(f"{name} 님 로그인 성공")
                     st.rerun()
                 else:
-                    st.error("비밀번호가 올바르지 않습니다.")
+                    st.error("로그인 실패: 비밀번호가 올바르지 않습니다.")
             else:
-                st.error("등록된 사용자명이 아닙니다.")
+                st.error("등록된 사용자명이 아닙니다 또는 연락처 정보가 없습니다.")
 
 if st.session_state["login_type"] is None:
     login_form()
@@ -989,22 +988,21 @@ with tab_viz:
     # ======================================================
     # 3) 리스크 등급 분포
     # ======================================================
-    with c2b:
-        st.markdown("### 🔥 리스크 등급 분포 (계약 단위)")
+with c2b:
+    st.markdown("### 🔥 리스크 등급 분포 (계약 단위)")
 
+    # 리스크등급 컬럼 있는지 확인
+    if "리스크등급" not in viz_base.columns:
+        st.info("리스크등급 데이터가 없어 분포를 그릴 수 없습니다.")
+    else:
         rc = (
-    if "리스크등급" not in df_view.columns:
-        return df_view
             viz_base["리스크등급"]
             .value_counts()
             .reindex(["HIGH", "MEDIUM", "LOW"])
             .fillna(0)
         )
-
         rc_df = pd.DataFrame({"리스크등급": rc.index, "건수": rc.values})
-
         force_bar_chart(rc_df, "리스크등급", "건수", height=300)
-
     # ======================================================
     # 4) 일별 추이
     # ======================================================
