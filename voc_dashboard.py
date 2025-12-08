@@ -960,6 +960,72 @@ if "VOC유형" in df_voc.columns:
 else:
     sel_voc_type = "전체"
 
+# ---------------------------
+# 글로벌 필터 요약 배지 출력
+# ---------------------------
+active_filters = []
+
+if sel_branches != ["전체"]:
+    active_filters.append(f"지사: {', '.join(sel_branches)}")
+
+if sel_risk != ["HIGH", "MEDIUM", "LOW"]:
+    active_filters.append(f"리스크: {', '.join(sel_risk)}")
+
+if sel_match != ["비매칭(X)"]:
+    active_filters.append(f"매칭: {', '.join(sel_match)}")
+
+if sel_fee_band_radio != "전체":
+    active_filters.append(f"요금구간: {sel_fee_band_radio}")
+
+# 출력
+if active_filters:
+    st.markdown(
+        f"""
+        <div style="
+            background:#eef2ff;
+            padding:10px 15px;
+            border-radius:10px;
+            border-left:5px solid #6366f1;
+            margin-bottom:8px;
+            font-size:0.9rem;">
+            <b>🔎 적용된 글로벌 필터:</b> {", ".join(active_filters)}
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
+else:
+    st.markdown(
+        """
+        <div style="
+            background:#f3f4f6;
+            padding:10px 15px;
+            border-radius:10px;
+            border-left:5px solid #9ca3af;
+            margin-bottom:8px;
+            font-size:0.9rem;">
+            <b>필터 없음 — 전체 데이터 표시 중</b>
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
+
+if st.sidebar.button("🔄 필터 초기화"):
+    for key in list(st.session_state.keys()):
+        if "filter" in key or "fee" in key:
+            del st.session_state[key]
+    st.success("글로벌 필터가 초기화되었습니다.")
+    st.rerun()
+
+if len(voc_filtered_global) == 0:
+    st.warning(
+        "⚠ 현재 선택한 글로벌 필터 조건을 만족하는 데이터가 없습니다.\n"
+        "필터를 완화하거나 초기화해주세요."
+    )
+elif len(voc_filtered_global) < 20:
+    st.info(
+        f"ℹ️ 현재 데이터가 {len(voc_filtered_global)}건만 남아 분석 결과가 제한될 수 있습니다."
+    )
+
 
 # ---------------------------------------
 # 🔐 로그인 타입별 데이터 접근 제어
