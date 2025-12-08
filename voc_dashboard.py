@@ -1946,25 +1946,24 @@ with tab_drill:
         c_left, c_right = st.columns(2)
 
         with c_left:
-        st.markdown("#### 📘 VOC 이력 (전체)")
-              if voc_hist.empty:
-        st.info("VOC 이력이 없습니다.")
+             st.markdown("#### 📘 VOC 이력 (전체)")
+                if voc_hist.empty:
+             st.info("VOC 이력이 없습니다.")
               else:
-        st.dataframe(
-            style_risk(voc_hist[display_cols]),
-            use_container_width=True,
-            height=320,
+             st.dataframe(
+                style_risk(voc_hist[display_cols]),
+                 use_container_width=True,
+                 height=320,
          )
-
         with c_right:
-        st.markdown("#### 📂 기타 출처 이력 (해지시설/요청/설변/정지/파이프라인)")
-              if other_hist.empty:
-        st.info("기타 출처 데이터가 없습니다.")
-              else:
-        st.dataframe(
-               other_hist,
-               use_container_width=True,
-               height=320,
+             st.markdown("#### 📂 기타 출처 이력 (해지시설/요청/설변/정지/파이프라인)")
+                if other_hist.empty:
+             st.info("기타 출처 데이터가 없습니다.")
+                else:
+             st.dataframe(
+                other_hist,
+                use_container_width=True,
+                height=320,
          )
 
     # ---------------------------
