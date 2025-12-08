@@ -892,11 +892,6 @@ fee_slider_min, fee_slider_max = st.sidebar.slider(
 st.sidebar.markdown("---")
 st.sidebar.caption(f"마지막 갱신: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
 
-
-# ==============================
-# 🔍 VOC 유형 필터 추가
-# ==============================
-
 # ==============================
 # 🔍 담당유형 필터 추가
 # ==============================
@@ -914,6 +909,9 @@ if "담당유형" in df_voc.columns:
 else:
     sel_mgr_type = "전체"
 
+# ==============================
+# 🔍 VOC 유형 필터 추가
+# ==============================
 
 # VOC유형중 (중분류)
 if "VOC유형중" in df_voc.columns:
@@ -960,54 +958,6 @@ if "VOC유형" in df_voc.columns:
 else:
     sel_voc_type = "전체"
 
-# ---------------------------
-# 글로벌 필터 요약 배지 출력
-# ---------------------------
-active_filters = []
-
-if sel_branches != ["전체"]:
-    active_filters.append(f"지사: {', '.join(sel_branches)}")
-
-if sel_risk != ["HIGH", "MEDIUM", "LOW"]:
-    active_filters.append(f"리스크: {', '.join(sel_risk)}")
-
-if sel_match != ["비매칭(X)"]:
-    active_filters.append(f"매칭: {', '.join(sel_match)}")
-
-if sel_fee_band_radio != "전체":
-    active_filters.append(f"요금구간: {sel_fee_band_radio}")
-
-# 출력
-if active_filters:
-    st.markdown(
-        f"""
-        <div style="
-            background:#eef2ff;
-            padding:10px 15px;
-            border-radius:10px;
-            border-left:5px solid #6366f1;
-            margin-bottom:8px;
-            font-size:0.9rem;">
-            <b>🔎 적용된 글로벌 필터:</b> {", ".join(active_filters)}
-        </div>
-        """,
-        unsafe_allow_html=True
-    )
-else:
-    st.markdown(
-        """
-        <div style="
-            background:#f3f4f6;
-            padding:10px 15px;
-            border-radius:10px;
-            border-left:5px solid #9ca3af;
-            margin-bottom:8px;
-            font-size:0.9rem;">
-            <b>필터 없음 — 전체 데이터 표시 중</b>
-        </div>
-        """,
-        unsafe_allow_html=True
-    )
 
 if st.sidebar.button("🔄 필터 초기화"):
     for key in list(st.session_state.keys()):
