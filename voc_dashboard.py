@@ -726,28 +726,22 @@ fee_bands = [
     "30만 이상",
 ]
 
-# 라디오 필터 (key 변경!)
-sel_fee_band = st.sidebar.radio(
+# 라디오 필터
+sel_fee_band_radio = st.sidebar.radio(
     "💰 월정료 구간",
     options=fee_bands,
     index=0,
     key="filter_fee_band_radio",
 )
 
-# 슬라이더 추가 (key 다르게!)
-fee_min, fee_max = st.sidebar.slider(
-    "💰 월정료 직접 범위 설정(만원)",
+# 슬라이더 필터 (만원 단위)
+fee_slider_min, fee_slider_max = st.sidebar.slider(
+    "🔧 월정료 직접 범위 설정(만원)",
     min_value=0,
     max_value=100,
     value=(0, 100),
     step=1,
     key="filter_fee_band_slider",
-)
-sel_fee_band = st.sidebar.radio(
-    "💰 월정료 구간",
-    options=fee_bands,
-    index=0,
-    key="filter_fee_band",
 )
 
 st.sidebar.markdown("---")
@@ -819,15 +813,15 @@ if fee_raw_col is not None and "월정료_수치" in voc_filtered_global.columns
         voc_filtered_global = voc_filtered_global[
             (fee_series >= 300000)
         ]
-    # "전체"일 때는 라디오 필터 패스
+    # "전체"는 패스
 
-    # ② 슬라이더 추가 정밀 필터 (만원 → 원)
+    # ② 슬라이더 추가 정밀 필터 (만원 → 원 단위 변환)
     slider_min_won = fee_slider_min * 10000
     slider_max_won = fee_slider_max * 10000
 
-    fee_series = voc_filtered_global["월정료_수치"].fillna(-1)
+    fee_series2 = voc_filtered_global["월정료_수치"].fillna(-1)
     voc_filtered_global = voc_filtered_global[
-        (fee_series >= slider_min_won) & (fee_series <= slider_max_won)
+        (fee_series2 >= slider_min_won) & (fee_series2 <= slider_max_won)
     ]
 
 # 로그인 타입별 접근 제한 (사용자일 경우 한 번 더 안전하게)
