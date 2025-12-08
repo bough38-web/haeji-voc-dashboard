@@ -1948,8 +1948,8 @@ with tab_drill:
         st.markdown("#### 💬 상담 시 활용 가이드")
         st.write(rec["comment"])
 
-    st.markdown("---")
-            st.markdown("---")
+        st.markdown("---")
+        st.markdown("---")
 
             c_left, c_right = st.columns(2)
 
