@@ -8,6 +8,7 @@ def force_stacked_bar_animated(
     anim_col: str,
     height: int = 280
 ):
+    # 내용
     """
     Plotly 적층 세로 막대그래프 (애니메이션 적용)
     df: 데이터프레임
