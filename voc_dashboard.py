@@ -1166,10 +1166,9 @@ with tab_viz:
         st.markdown("#### 🔎 지사 상세 Drill-down")
 
         if not branch_risk.empty:
-            # 비매칭이 1건 이상인 지사만
             if 'pivot_branch' in locals():
                 valid_branch = pivot_branch.copy()
-                if 'HIGH' in valid_branch.columns or 'MEDIUM' in valid_branch.columns or 'LOW' in valid_branch.columns:
+                if any(col in valid_branch.columns for col in ["HIGH", "MEDIUM", "LOW"]):
                     valid_branch["총계"] = valid_branch.sum(axis=1)
                     branch_candidates = valid_branch[valid_branch["총계"] > 0].index.tolist()
                 else:
@@ -1260,57 +1259,6 @@ with tab_viz:
 
                 st.markdown("#### 🔍 최다 빈도 단어 TOP 50")
                 force_bar_chart(freq_df, "단어", "빈도", height=350)
-
-# ------------------------------------------------
-# 🔹 공통 막대그래프 (Plotly / 기본차트 자동 선택)
-# ------------------------------------------------
-def force_bar_chart(df: pd.DataFrame, x: str, y: str, height: int = 280):
-    """Plotly가 있으면 Plotly, 없으면 기본 bar_chart 사용."""
-    if df.empty:
-        df = pd.DataFrame({x: ["데이터없음"], y: [0]})
-
-    if HAS_PLOTLY:
-        fig = px.bar(df, x=x, y=y, text=y)
-        fig.update_traces(textposition="outside", textfont_size=11)
-        max_y = df[y].max()
-        fig.update_yaxes(range=[0, max_y * 1.3 if max_y > 0 else 1])
-        fig.update_layout(
-            height=height,
-            margin=dict(l=40, r=20, t=60, b=40),
-        )
-        st.plotly_chart(fig, use_container_width=True)
-    else:
-        st.bar_chart(df.set_index(x)[y], height=height, use_container_width=True)
-
-
-# ------------------------------------------------
-# 🔹 적층 세로 막대그래프 (Plotly)
-# ------------------------------------------------
-def force_stacked_bar(df: pd.DataFrame, x: str, y_cols: list[str], height: int = 280):
-    """
-    Plotly가 있으면 적층 세로 막대그래프, 없으면 안내 메시지.
-    df: DataFrame
-    x: x축 컬럼명
-    y_cols: 적층할 수치 컬럼 리스트 (예: ["HIGH","MEDIUM","LOW"])
-    """
-    if df.empty or not y_cols:
-        st.info("표시할 데이터가 없습니다.")
-        return
-
-    if HAS_PLOTLY:
-        fig = px.bar(
-            df,
-            x=x,
-            y=y_cols,
-            barmode="stack",
-        )
-        fig.update_layout(
-            height=height,
-            margin=dict(l=40, r=20, t=40, b=40),
-        )
-        st.plotly_chart(fig, use_container_width=True)
-    else:
-        st.warning("Plotly가 설치되어야 적층 막대그래프를 표시할 수 있습니다.")
 
 # ----------------------------------------------------
 # TAB ALL — VOC 전체 (계약번호 기준 요약)
