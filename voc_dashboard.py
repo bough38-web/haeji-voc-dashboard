@@ -1082,7 +1082,7 @@ with st.expander("ℹ️ 해지방어 활동시설 안내", expanded=True):  # �
         st.info("현재 글로벌 필터 조건에서 비매칭(X) 계약이 없습니다.")
     else:
         # 🔎 필터 접기/펼치기
-with st.expander("🔎 지사 / 담당자 / 검색 필터", expanded=False):
+        with st.expander("🔎 지사 / 담당자 / 검색 필터", expanded=False):
             u_col1, u_col2 = st.columns([2, 3])
 
             branches_u = ["전체"] + sort_branch(
