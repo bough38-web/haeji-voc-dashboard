@@ -775,10 +775,10 @@ with tab_viz:
 
     colA, colB = st.columns(2)
 
-      # -------------------------
-      # 지사 선택
-      # -------------------------
-      b_opts = ["전체"] + sort_branch(unmatched_global["관리지사"].dropna().unique())
+    # -------------------------
+    # 지사 선택
+    # -------------------------
+    b_opts = ["전체"] + sort_branch(unmatched_global["관리지사"].dropna().unique())
       sel_b_viz = colA.pills(
         "🏢 지사 선택",
         options=b_opts,
@@ -1141,7 +1141,7 @@ with tab_unmatched:
                 temp_u["상호"].astype(str).str.contains(uq_name.strip())
             ]
 
-                if temp_u.empty:
+        if temp_u.empty:
             st.info("조건에 맞는 해지방어 활동시설(비매칭) 계약이 없습니다.")
         else:
             temp_u_sorted = temp_u.sort_values("접수일시", ascending=False)
@@ -1274,8 +1274,8 @@ with tab_drill:
         drill_base = drill_base[drill_base["매칭여부"] == "비매칭(X)"]
 
             # 🔎 필터 접기/펼치기
-    with st.expander("🔎 지사 / 담당자 / 검색 필터", expanded=False):
-        d1, d2 = st.columns([2, 3])
+with st.expander("🔎 지사 / 담당자 / 검색 필터", expanded=False):
+    d1, d2 = st.columns([2, 3])
         branches_d = ["전체"] + sort_branch(drill_base["관리지사"].dropna().unique())
         sel_branch_d = d1.radio(
             "지사 선택",
