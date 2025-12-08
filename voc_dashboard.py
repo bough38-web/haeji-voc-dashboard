@@ -1594,37 +1594,132 @@ st.plotly_chart(fig_ai, use_container_width=True)
 
 
 # ------------------------------------------------------
-# 🔸 경과일수 박스플롯 (지사 + 담당자 함께 표시)
+# 🔸 4. 경과일수 박스플롯 (지사/담당자 지연 분석, 개선 버전)
 # ------------------------------------------------------
+st.markdown("### 📦 경과일수 박스플롯 (지사/담당자 지연 분석)")
 
-if {"경과일수", "관리지사", "구역담당자_통합"}.issubset(viz_filtered.columns):
+if "경과일수" in viz_filtered.columns:
 
-    st.markdown("### 📦 경과일수 박스플롯 (지사/담당자 지연 분석)")
+    # --- 상단 컨트롤 ---
+    c_box1, c_box2, c_box3 = st.columns([2, 2, 2])
 
-    # 1) 지사 / 담당자 라벨 생성
-    viz_filtered["담당자_라벨"] = (
-        viz_filtered["관리지사"].astype(str)
-        + " / "
-        + viz_filtered["구역담당자_통합"].astype(str)
+    # 지사 필터
+    branch_opts_box = ["전체"] + sort_branch(
+        viz_filtered["관리지사"].dropna().unique()
+    )
+    sel_branch_box = c_box1.selectbox(
+        "지사 선택",
+        options=branch_opts_box,
+        index=0,
+        key="box_branch",
     )
 
-    # 2) 박스플롯 생성
-    fig_delay_box = px.box(
-        viz_filtered,
-        x="담당자_라벨",
-        y="경과일수",
-        color="관리지사",
-        points="all",
-        title="담당자별 경과일수 분포 (지사 포함)",
+    # 리스크 필터
+    risk_opts_box = ["HIGH", "MEDIUM", "LOW"]
+    sel_risk_box = c_box2.multiselect(
+        "리스크등급 필터",
+        options=risk_opts_box,
+        default=risk_opts_box,
+        key="box_risk",
     )
 
-    fig_delay_box.update_layout(
-        height=600,
-        xaxis_tickangle=-45,
-        margin=dict(l=30, r=20, t=60, b=200)
+    # 상위 N명 (경과일수 긴 담당자만 추리기)
+    top_n_mgr = c_box3.slider(
+        "상위 담당자 N (경과일수 중앙값 기준)",
+        min_value=5,
+        max_value=50,
+        value=20,
+        step=5,
+        key="box_top_n",
     )
 
-    st.plotly_chart(fig_delay_box, use_container_width=True)
+    # --- 데이터 필터링 ---
+    box_df = viz_filtered.copy()
+
+    if sel_branch_box != "전체":
+        box_df = box_df[box_df["관리지사"] == sel_branch_box]
+
+    if sel_risk_box:
+        box_df = box_df[box_df["리스크등급"].isin(sel_risk_box)]
+
+    # 담당자/지사 라벨 생성: "지사 / 담당자"
+    box_df["담당자_라벨"] = (
+        box_df["관리지사"].fillna("미지정") + " / " +
+        box_df["구역담당자_통합"].fillna("미지정")
+    )
+
+    # 데이터가 없으면 종료
+    if box_df.empty:
+        st.info("선택한 조건에서 표시할 데이터가 없습니다.")
+    else:
+        # --- 담당자별 경과일수 중앙값/건수 집계 ---
+        agg_box = (
+            box_df.groupby(["관리지사", "구역담당자_통합", "담당자_라벨"])
+            .agg(
+                경과일수_중앙값=("경과일수", "median"),
+                계약건수=("계약번호_정제", "nunique"),
+            )
+            .reset_index()
+        )
+
+        # 경과일수 중앙값이 긴 담당자 상위 N명만 선택
+        agg_box = agg_box.sort_values(
+            "경과일수_중앙값", ascending=False
+        ).head(top_n_mgr)
+
+        top_labels = agg_box["담당자_라벨"].tolist()
+        box_df_top = box_df[box_df["담당자_라벨"].isin(top_labels)].copy()
+
+        st.caption(
+            f"표시 대상 담당자 수: {len(top_labels)}명 "
+            f"(경과일수 중앙값 상위 {top_n_mgr}명 기준)"
+        )
+
+        # --- 박스플롯 그리기 ---
+        fig_box = px.box(
+            box_df_top,
+            x="담당자_라벨",
+            y="경과일수",
+            color="관리지사",
+            points="outliers",  # 이상치만 점으로 표시
+            hover_data=[
+                "관리지사",
+                "구역담당자_통합",
+                "계약번호_정제",
+                "상호",
+                "리스크등급",
+            ],
+            title="담당자별 경과일수 분포 (지사 포함)",
+        )
+
+        # 전체 평균선 추가
+        mean_days = box_df_top["경과일수"].mean()
+        fig_box.add_hline(
+            y=mean_days,
+            line_dash="dash",
+            annotation_text=f"전체 평균 {mean_days:.1f}일",
+            annotation_position="top left",
+        )
+
+        # 레이아웃 튜닝 (라벨 회전/여백)
+        fig_box.update_layout(
+            xaxis_title="담당자 (지사 / 담당자명)",
+            yaxis_title="경과일수",
+            height=550,
+            margin=dict(l=40, r=20, t=60, b=180),
+            legend_title_text="관리지사",
+        )
+        fig_box.update_xaxes(
+            tickangle=-45,
+            tickfont=dict(size=10),
+            categoryorder="array",
+            categoryarray=top_labels,  # 중앙값 기준 정렬 유지
+        )
+
+        st.plotly_chart(fig_box, use_container_width=True)
+
+else:
+    st.info("경과일수 컬럼이 없습니다.")
 
 # ----------------------------------------------------
 # TAB ALL — VOC 전체 (계약번호 기준 요약)
