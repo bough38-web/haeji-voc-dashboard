@@ -40,11 +40,6 @@ def force_bar_chart(df, x, y, height=280):
 
 # ... 이후에 데이터 로딩, 필터, 탭 구성 등 ...
 
-# 예: TAB VIZ 호출 부분
-with st.tabs(["예시"])[0]:
-    # dummy data
-    bc = pd.DataFrame({"관리지사": ["A","B"], "비매칭계약수":[5,3]})
-    force_bar_chart(bc, "관리지사", "비매칭계약수", height=260)
 
 # 연락처 매핑 로드
 def load_contact_map(path: str) -> dict:
@@ -114,6 +109,13 @@ if st.session_state["login_type"] is None:
 
 LOGIN_TYPE = st.session_state["login_type"]
 LOGIN_USER = st.session_state["login_user"]
+
+# 예: TAB VIZ 호출 부분
+with st.tabs(["예시"])[0]:
+    # dummy data
+    bc = pd.DataFrame({"관리지사": ["A","B"], "비매칭계약수":[5,3]})
+    force_bar_chart(bc, "관리지사", "비매칭계약수", height=260)
+
 
 import os
 from datetime import datetime, date
