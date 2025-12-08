@@ -813,7 +813,6 @@ if fee_raw_col is not None:
 
     # 슬라이더 필터 (만원단위를 원 단위로 변환)
     slider_min = fee_min * 10000
-    slider_max = fee_max * 10000
 
     voc_filtered_global = voc_filtered_global[
         (fee_series >= slider_min) & (fee_series <= slider_max)
