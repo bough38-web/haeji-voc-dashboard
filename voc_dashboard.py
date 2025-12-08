@@ -496,7 +496,7 @@ if st.session_state["login_type"] is None:
     st.stop()
 
 LOGIN_TYPE = st.session_state["login_type"]   # "admin" 또는 "user"
-LOGIN_USER = st.session_state["login_user"]   # 관리자면 "ADMIN", 사용자는 성명
+LOGIN_USER = st.session_state["login_user"]   # 관리자: ADMIN / 사용자: 성명
 
 
 # ----------------------------------------------------
@@ -510,15 +510,12 @@ def coalesce_cols(row, candidates):
                 return val
     return np.nan
 
-
 df_voc["설치주소_표시"] = df_voc.apply(
     lambda r: coalesce_cols(r, ["시설_설치주소", "설치주소"]),
     axis=1,
 )
 
-# 확정된 월정료 컬럼명 사용
 fee_raw_col = "시설_KTT월정료(조정)" if "시설_KTT월정료(조정)" in df_voc.columns else None
-
 
 def parse_fee(x: object) -> float:
     if pd.isna(x):
@@ -534,10 +531,9 @@ def parse_fee(x: object) -> float:
         v = float(digits)
     except Exception:
         return np.nan
-    if v >= 200000:  # 10배 보정
+    if v >= 200000:
         v = v / 10.0
     return v
-
 
 if fee_raw_col is not None:
     df_voc["월정료_수치"] = df_voc[fee_raw_col].apply(parse_fee)
@@ -561,11 +557,11 @@ else:
     df_voc["월정료_수치"] = np.nan
     df_voc["월정료구간"] = "미기재"
 
+
 # ----------------------------------------------------
 # 8. 리스크 등급/경과일 계산
 # ----------------------------------------------------
 today = date.today()
-
 
 def compute_risk(row):
     dt = row.get("접수일시")
@@ -592,6 +588,16 @@ def compute_risk(row):
     return days, level
 
 
+# ----------------------------------------------------
+# ⭐ 매칭여부 컬럼 생성 (로그인 분기보다 반드시 위)
+# ----------------------------------------------------
+df_voc["매칭여부"] = df_voc["계약번호_정제"].apply(
+    lambda x: "매칭(O)" if x in other_union else "비매칭(X)"
+)
+
+# ----------------------------------------------------
+# ⭐ 로그인 타입에 따른 unmatched_global 처리 (여기서 오류 안 남)
+# ----------------------------------------------------
 if LOGIN_TYPE == "user":
     df_user = df_voc[df_voc["구역담당자_통합"] == LOGIN_USER]
     unmatched_global = df_user[df_user["매칭여부"] == "비매칭(X)"]
