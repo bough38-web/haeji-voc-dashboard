@@ -5,6 +5,8 @@ import os
 from datetime import datetime, date
 import smtplib
 from email.message import EmailMessage
+from wordcloud import WordCloud
+import matplotlib.pyplot as plt
 
 # ==============================
 # 0. 공통 설정 / 전역 상수
