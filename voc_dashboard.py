@@ -741,12 +741,7 @@ with tab_viz:
     else:
         left, right = st.columns([1, 2])
 
-with tab_viz:
-    st.subheader("📊 지사 / 담당자별 비매칭 리스크 현황")
 
-    if unmatched_global.empty:
-        st.info("현재 조건에서 비매칭(X) 데이터가 없습니다.")
-    else:
 
         # ===== 🔥 필터 UI 개선 영역 시작 =====
         st.markdown("""
