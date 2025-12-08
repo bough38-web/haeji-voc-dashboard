@@ -796,12 +796,12 @@ if sel_match and "매칭여부" in voc_filtered_global.columns:
     ]
 
 # ---------------------------------------
-# 💰 월정료 구간 필터 (3구간 단순화)
+# 💰 월정료 구간 필터 (라디오 + 슬라이더)
 # ---------------------------------------
-if sel_fee_band != "전체":
-    # 숫자 필드 사용
+if fee_raw_col is not None:
     fee_series = voc_filtered_global["월정료_수치"].fillna(-1)
 
+    # 라디오 필터 우선 적용
     if sel_fee_band == "10만 이하":
         voc_filtered_global = voc_filtered_global[(fee_series >= 0) & (fee_series < 100000)]
 
@@ -810,6 +810,14 @@ if sel_fee_band != "전체":
 
     elif sel_fee_band == "30만 이상":
         voc_filtered_global = voc_filtered_global[(fee_series >= 300000)]
+
+    # 슬라이더 필터 (만원단위를 원 단위로 변환)
+    slider_min = fee_min * 10000
+    slider_max = fee_max * 10000
+
+    voc_filtered_global = voc_filtered_global[
+        (fee_series >= slider_min) & (fee_series <= slider_max)
+    ]
 
 # 로그인 타입별 접근 제한(이중 안전장치)
 if LOGIN_TYPE == "user":
