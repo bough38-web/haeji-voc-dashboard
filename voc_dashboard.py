@@ -278,14 +278,16 @@ def load_contact_map(path: str):
 
     df_c = pd.read_excel(path)
 
+    # 🔍 컬럼 자동 탐색 (연락처 오타 '연략처' 포함)
     name_col = detect_column(df_c, ["구역담당자", "담당자", "처리자1", "성명", "이름"])
     email_col = detect_column(df_c, ["이메일", "메일", "E-MAIL"])
-    phone_col = detect_column(df_c, ["휴대폰", "전화", "연락처", "핸드폰"])
+    phone_col = detect_column(df_c, ["휴대폰", "전화", "연락처", "연략처", "핸드폰"])
 
     if not name_col:
         st.warning("담당자 매핑 파일에서 담당자 이름 컬럼을 찾지 못했습니다.")
         return df_c, {}
 
+    # 사용할 컬럼만 선택
     cols = [name_col]
     if email_col:
         cols.append(email_col)
@@ -293,6 +295,8 @@ def load_contact_map(path: str):
         cols.append(phone_col)
 
     df_c = df_c[cols].copy()
+
+    # 표준 컬럼명으로 변경
     rename_map = {name_col: "구역담당자_통합"}
     if email_col:
         rename_map[email_col] = "이메일"
@@ -300,14 +304,25 @@ def load_contact_map(path: str):
         rename_map[phone_col] = "휴대폰"
     df_c.rename(columns=rename_map, inplace=True)
 
+    # 📱 휴대폰 컬럼 숫자만 남기고 정제 (뒷 4자리 로그인용)
+    if "휴대폰" in df_c.columns:
+        df_c["휴대폰"] = df_c["휴대폰"].apply(
+            lambda x: "".join(ch for ch in safe_str(x) if ch.isdigit())
+        )
+
+    # 🔗 최종 매핑 딕셔너리 생성
     manager_contacts: dict[str, dict] = {}
     for _, row in df_c.iterrows():
         name = safe_str(row.get("구역담당자_통합", ""))
         if not name:
             continue
+
+        email = safe_str(row.get("이메일", "")) if "이메일" in df_c.columns else ""
+        phone = safe_str(row.get("휴대폰", "")) if "휴대폰" in df_c.columns else ""
+
         manager_contacts[name] = {
-            "email": safe_str(row.get("이메일", "")),
-            "phone": safe_str(row.get("휴대폰", "")),
+            "email": email,
+            "phone": phone,
         }
 
     return df_c, manager_contacts
