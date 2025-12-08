@@ -899,8 +899,12 @@ with tab_branch_admin_report:
         st.bar_chart(rc)
 
         st.markdown("### 📋 지사 전체 비매칭 리스트")
+
+        # 혹시 모를 필터를 위해 한 번 더 지사 + 비매칭만 필터링
+        df_branch_unmatched = df_branch[df_branch["매칭여부"] == "비매칭(X)"]
+
         st.dataframe(
-            df_branch[df_branch["매칭"] == "비매칭(X)"][display_cols],
+            df_branch_unmatched[display_cols],
             use_container_width=True,
             height=450,
         )
