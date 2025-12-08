@@ -1,3 +1,64 @@
+# ----------------------------------------------------
+# 로그인 시스템 (관리자 / 사용자)
+# ----------------------------------------------------
+import streamlit as st
+
+# 세션 초기화
+if "login_type" not in st.session_state:
+    st.session_state["login_type"] = None
+if "login_user" not in st.session_state:
+    st.session_state["login_user"] = None
+
+ADMIN_CODE = "C3A"   # 관리자 패스워드
+
+
+# ------------------------------
+# 로그인 폼
+# ------------------------------
+def login_form():
+
+    st.markdown("## 🔐 로그인")
+
+    tab_admin, tab_user = st.tabs(["관리자 로그인", "사용자 로그인"])
+
+    # ---- 관리자 ----
+    with tab_admin:
+        pw = st.text_input("관리자 비밀번호", type="password", key="admin_pw")
+        if st.button("관리자 로그인"):
+            if pw == ADMIN_CODE:
+                st.session_state["login_type"] = "admin"
+                st.session_state["login_user"] = "ADMIN"
+                st.success("관리자 로그인 성공")
+                st.rerun()
+            else:
+                st.error("비밀번호가 올바르지 않습니다.")
+
+    # ---- 사용자 ----
+    with tab_user:
+        name = st.text_input("성명", key="user_name")
+        emp = st.text_input("5자리 사번", key="user_emp")
+
+        if st.button("사용자 로그인"):
+            if len(emp) == 5 and name.strip() != "":
+                st.session_state["login_type"] = "user"
+                st.session_state["login_user"] = name.strip()
+                st.success(f"{name} 님 로그인 성공")
+                st.rerun()
+            else:
+                st.error("성명 + 5자리 사번을 정확히 입력하세요.")
+
+
+# 로그인이 안 되어 있으면 모든 코드 중지
+if st.session_state["login_type"] is None:
+    login_form()
+    st.stop()
+
+# 로그인된 사용자 정보
+LOGIN_TYPE = st.session_state["login_type"]  # admin / user
+LOGIN_USER = st.session_state["login_user"]
+
+
+
 import os
 from datetime import datetime, date
 import smtplib
@@ -391,9 +452,52 @@ other_sets = {
 }
 other_union = set().union(*other_sets.values()) if other_sets else set()
 
-df_voc["매칭여부"] = df_voc["계약번호_정제"].apply(
-    lambda x: "매칭(O)" if x in other_union else "비매칭(X)"
-)
+
+# ------------------------------
+# 로그인 폼
+# ------------------------------
+def login_form():
+
+    st.markdown("## 🔐 로그인")
+
+    tab_admin, tab_user = st.tabs(["관리자 로그인", "사용자 로그인"])
+
+    # ---- 관리자 ----
+    with tab_admin:
+        pw = st.text_input("관리자 비밀번호", type="password", key="admin_pw")
+        if st.button("관리자 로그인"):
+            if pw == ADMIN_CODE:
+                st.session_state["login_type"] = "admin"
+                st.session_state["login_user"] = "ADMIN"
+                st.success("관리자 로그인 성공")
+                st.rerun()
+            else:
+                st.error("비밀번호가 올바르지 않습니다.")
+
+    # ---- 사용자 ----
+    with tab_user:
+        name = st.text_input("성명", key="user_name")
+        emp = st.text_input("5자리 사번", key="user_emp")
+
+        if st.button("사용자 로그인"):
+            if len(emp) == 5 and name.strip() != "":
+                st.session_state["login_type"] = "user"
+                st.session_state["login_user"] = name.strip()
+                st.success(f"{name} 님 로그인 성공")
+                st.rerun()
+            else:
+                st.error("성명 + 5자리 사번을 정확히 입력하세요.")
+
+# ------------------------------
+# 로그인 처리
+# ------------------------------
+if st.session_state["login_type"] is None:
+    login_form()
+    st.stop()
+
+LOGIN_TYPE = st.session_state["login_type"]   # "admin" 또는 "user"
+LOGIN_USER = st.session_state["login_user"]   # 관리자면 "ADMIN", 사용자는 성명
+
 
 # ----------------------------------------------------
 # 7. 설치주소 / 월정료 정제
@@ -683,6 +787,16 @@ if sel_fee_band != "전체" and fee_raw_col is not None:
         voc_filtered_global = voc_filtered_global[(fee >= 400000) & (fee < 500000)]
     elif sel_fee_band == "50만 이상":
         voc_filtered_global = voc_filtered_global[(fee >= 500000)]
+
+# ------------------------------
+# 🔐 로그인 타입에 따른 접근 제한
+# ------------------------------
+if LOGIN_TYPE == "user":
+    # 사용자: 본인 담당 건만 보이게
+    if "구역담당자_통합" in voc_filtered_global.columns:
+        voc_filtered_global = voc_filtered_global[
+            voc_filtered_global["구역담당자_통합"].astype(str) == str(LOGIN_USER)
+        ]
 
 unmatched_global = voc_filtered_global[
     voc_filtered_global["매칭여부"] == "비매칭(X)"
@@ -1458,11 +1572,6 @@ else:
     fb_sel = fb_all[fb_all["계약번호_정제"].astype(str) == str(sel_cn)].copy()
     fb_sel = fb_sel.sort_values("등록일자", ascending=False)
 
-    # 관리자 비밀번호 (Q1=C, Q2=3, Q3=A → C3A)
-    ADMIN_CODE = "C3A"
-    admin_pw = st.text_input("관리자 비밀번호 입력 (삭제/수정 시 필요)", type="password")
-    is_admin = admin_pw == ADMIN_CODE
-
     st.markdown("##### 📄 등록된 처리내역")
     if fb_sel.empty:
         st.info("등록된 처리 이력이 없습니다.")
@@ -1485,38 +1594,53 @@ else:
                         )
 
                 with col2:
-                    if is_admin:
+                    if LOGIN_TYPE == "admin":   # 관리자만 삭제 가능
                         if st.button("🗑 삭제", key=f"del_{idx}"):
-                            fb_all = fb_all.drop(index=idx)
-                            st.session_state["feedback_df"] = fb_all
-                            save_feedback(FEEDBACK_PATH, fb_all)
-                            st.success("삭제 완료!")
-                            st.rerun()
-                st.markdown("</div>", unsafe_allow_html=True)
+                        fb_all = fb_all.drop(index=idx)
+                        st.session_state["feedback_df"] = fb_all
+                        save_feedback(FEEDBACK_PATH, fb_all)
+                        st.success("삭제 완료!")
+                        st.rerun()
+                        st.markdown("</div>", unsafe_allow_html=True)
 
     # 새 처리내용 입력
-    st.markdown("##### ➕ 새 처리내용 등록")
-    new_content = st.text_area("고객대응 / 현장 처리내용 입력", key="new_fb_content")
-    new_writer = st.text_input("등록자", key="new_fb_writer")
-    new_note = st.text_input("비고", key="new_fb_note")
+    st.markdown("### ➕ 빠른 활동등록")
 
-    if st.button("등록하기", key="btn_add_feedback"):
-        if not new_content or not new_writer:
-            st.warning("내용과 등록자를 모두 입력해주세요.")
-        else:
-            new_row = {
-                "계약번호_정제": sel_cn,
-                "고객대응내용": new_content,
-                "등록자": new_writer,
-                "등록일자": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                "비고": new_note,
-            }
-            fb_all = pd.concat([fb_all, pd.DataFrame([new_row])], ignore_index=True)
-            st.session_state["feedback_df"] = fb_all
-            save_feedback(FEEDBACK_PATH, fb_all)
-            st.success("등록 완료!")
-            st.rerun()
+    if LOGIN_TYPE == "user":
+        user_rows = unmatched_global.copy()
+    else:
+        user_rows = unmatched_global.copy()
 
+    sel_quick = st.selectbox(
+        "활동등록할 계약 선택",
+        options=["(선택)"] + user_rows["계약번호_정제"].astype(str).tolist(),
+        key="quick_cn",
+     )
+
+    if sel_quick != "(선택)":
+        row = user_rows[user_rows["계약번호_정제"] == sel_quick].iloc[0]
+        st.write(f"**계약번호:** {sel_quick}")
+        st.write(f"**상호:** {row['상호']}")
+        st.write(f"**설치주소:** {row['설치주소_표시']}")
+
+        quick_content = st.text_area("활동내용 입력", key="quick_content")
+        quick_writer = LOGIN_USER  # 사용자명 자동
+        quick_note = st.text_input("비고", key="quick_note")
+
+    if st.button("등록", key="quick_submit"):
+        new_row = {
+            "계약번호_정제": sel_quick,
+            "고객대응내용": quick_content,
+            "등록자": quick_writer,
+            "등록일자": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            "비고": quick_note,
+        }
+        fb_all = st.session_state["feedback_df"]
+        fb_all = pd.concat([fb_all, pd.DataFrame([new_row])], ignore_index=True)
+        st.session_state["feedback_df"] = fb_all
+        save_feedback(FEEDBACK_PATH, fb_all)
+        st.success("등록 완료되었습니다.")
+        st.rerun()
 st.markdown("</div>", unsafe_allow_html=True)
 
 # ====================================================
