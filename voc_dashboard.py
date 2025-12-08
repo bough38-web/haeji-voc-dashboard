@@ -729,16 +729,20 @@ sel_match = st.sidebar.pills(
     key="filter_match_btn",
 )
 
-# 월정료 구간
+# 월정료 구간 (간단 3구간)
 fee_bands = [
     "전체",
-    "0~10만",
-    "10만~20만",
-    "20만~30만",
-    "30만~40만",
-    "40만~50만",
-    "50만 이상",
+    "10만 이하",
+    "10만~30만",
+    "30만 이상",
 ]
+
+sel_fee_band = st.sidebar.radio(
+    "💰 월정료 구간",
+    options=fee_bands,
+    index=0,
+    key="filter_fee_band",
+)
 
 sel_fee_band = st.sidebar.radio(
     "💰 월정료 구간",
