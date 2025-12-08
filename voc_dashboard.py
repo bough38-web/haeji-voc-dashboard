@@ -729,20 +729,30 @@ sel_match = st.sidebar.pills(
     key="filter_match_btn",
 )
 
-# 월정료 구간 (간단 3구간)
-fee_bands = [
-    "전체",
-    "10만 이하",
-    "10만~30만",
-    "30만 이상",
-]
+# ---------------------------------------
+# 💰 월정료 필터 적용 (라디오 + 슬라이더)
+# ---------------------------------------
+if fee_raw_col is not None:
 
-sel_fee_band = st.sidebar.radio(
-    "💰 월정료 구간",
-    options=fee_bands,
-    index=0,
-    key="filter_fee_band",
-)
+    fee_series = voc_filtered_global["월정료_수치"].fillna(-1)
+
+    # ① 라디오 필터 우선 적용
+    if sel_fee_band_radio == "10만 이하":
+        voc_filtered_global = voc_filtered_global[(fee_series >= 0) & (fee_series < 100000)]
+
+    elif sel_fee_band_radio == "10만~30만":
+        voc_filtered_global = voc_filtered_global[(fee_series >= 100000) & (fee_series < 300000)]
+
+    elif sel_fee_band_radio == "30만 이상":
+        voc_filtered_global = voc_filtered_global[(fee_series >= 300000)]
+
+    # ② 슬라이더는 라디오 범위 이후 "추가 정밀 필터"
+    slider_min_won = fee_slider_min * 10000
+    slider_max_won = fee_slider_max * 10000
+
+    voc_filtered_global = voc_filtered_global[
+        (fee_series >= slider_min_won) & (fee_series <= slider_max_won)
+    ]
 st.sidebar.markdown("---")
 st.sidebar.caption(f"마지막 갱신: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
 
