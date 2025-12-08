@@ -908,8 +908,6 @@ with tab_branch_admin_report:
 # TAB VIZ — 지사 / 담당자 시각화
 # ----------------------------------------------------
 with tab_viz:
-
-    # 기본 데이터 확보
     viz_base = unmatched_global.copy()
     if "리스크등급" not in viz_base.columns:
         viz_base["리스크등급"] = "LOW"
@@ -920,10 +918,8 @@ with tab_viz:
         st.info("현재 조건에서 비매칭(X) 데이터가 없습니다.")
         st.stop()
 
-    # ===========================
-    # 필터 UI
-    # ===========================
-    st.markdown("""
+    st.markdown(
+        """
         <div style="
             background:#ffffff;
             border:1px solid #e5e7eb;
@@ -933,9 +929,11 @@ with tab_viz:
             box-shadow:0 2px 6px rgba(0,0,0,0.05);
         ">
         <b>🎛️ 필터</b><br>
-        지사와 담당자를 선택하면 아래 그래프가 즉시 갱신됩니다.
+        지사와 담당자를 선택하면 아래 모든 시각화가 즉시 갱신됩니다.
         </div>
-    """, unsafe_allow_html=True)
+        """,
+        unsafe_allow_html=True,
+    )
 
     colA, colB = st.columns(2)
 
@@ -956,7 +954,11 @@ with tab_viz:
         tmp_mgr = tmp_mgr[tmp_mgr["관리지사"] == sel_b_viz]
 
     mgr_list_viz = sorted(
-        [m for m in tmp_mgr["구역담당자_통합"].astype(str).unique() if m not in ["", "nan"]]
+        [
+            m
+            for m in tmp_mgr["구역담당자_통합"].astype(str).unique().tolist()
+            if m not in ["", "nan"]
+        ]
     )
 
     sel_mgr_viz = colB.selectbox(
@@ -966,7 +968,9 @@ with tab_viz:
         key="viz_mgr",
     )
 
-    # 필터 적용
+    # -----------------------------
+    # 필터 적용된 비매칭 베이스
+    # -----------------------------
     viz_filtered = viz_base.copy()
     if sel_b_viz != "전체":
         viz_filtered = viz_filtered[viz_filtered["관리지사"] == sel_b_viz]
@@ -975,86 +979,127 @@ with tab_viz:
             viz_filtered["구역담당자_통합"].astype(str) == sel_mgr_viz
         ]
 
-    # ============================================================
-    # 1) 지사별 비매칭 계약수 (적층 그래프)
-    # ============================================================
-    st.markdown("### 🧱 지사별 비매칭 계약 수 (적층)")
+    if viz_filtered.empty:
+        st.info("선택한 조건에서 비매칭(X) 데이터가 없습니다.")
+        st.stop()
 
-    risk_group = (
-        viz_filtered.groupby(["관리지사", "리스크등급"])["계약번호_정제"]
+    # ======================================================
+    # 1) 지사별 비매칭 계약 수 — 리스크등급 적층 세로 막대
+    # ======================================================
+    st.markdown("### 🧱 지사별 비매칭 계약 수 (유니크 계약, 리스크 적층)")
+
+    branch_risk = (
+        viz_filtered
+        .groupby(["관리지사", "리스크등급"])["계약번호_정제"]
         .nunique()
-        .unstack(fill_value=0)
-        .reindex(BRANCH_ORDER, fill_value=0)
-        .reset_index()
+        .reset_index(name="계약수")
     )
 
-    for col in ["HIGH", "MEDIUM", "LOW"]:
-        if col not in risk_group.columns:
-            risk_group[col] = 0
+    if branch_risk.empty:
+        st.info("지사별 데이터가 없습니다.")
+    else:
+        pivot_branch = (
+            branch_risk
+            .pivot(index="관리지사", columns="리스크등급", values="계약수")
+            .fillna(0)
+        )
 
-    force_stacked_bar(
-        risk_group,
-        "관리지사",
-        ["HIGH", "MEDIUM", "LOW"],
-        height=300,
-    )
+        # 지사 정렬
+        pivot_branch = pivot_branch.reindex(BRANCH_ORDER).fillna(0)
 
-    # ============================================================
-    # 2) 담당자별 비매칭 TOP 15 (적층 그래프)
-    # ============================================================
+        stack_cols = [c for c in ["HIGH", "MEDIUM", "LOW"] if c in pivot_branch.columns]
+
+        branch_plot_df = pivot_branch.reset_index()
+
+        force_stacked_bar(
+            branch_plot_df,
+            x="관리지사",
+            y_cols=stack_cols,
+            height=260,
+        )
+
+    # ======================================================
+    # 2) 담당자별 비매칭 TOP 15 — 리스크 적층 세로 막대
+    # ======================================================
     c2a, c2b = st.columns(2)
+
     with c2a:
-        st.markdown("### 👤 담당자별 비매칭 TOP 15 (적층)")
+        st.markdown("### 👤 담당자별 비매칭 TOP 15 (유니크 계약, 리스크 적층)")
 
-        mgr_group = (
-            viz_filtered.groupby(["구역담당자_통합", "리스크등급"])["계약번호_정제"]
+        mgr_risk_base = viz_filtered.copy()
+        mgr_risk_base["구역담당자_통합"] = (
+            mgr_risk_base["구역담당자_통합"].astype(str)
+        )
+        mgr_risk_base = mgr_risk_base[
+            mgr_risk_base["구역담당자_통합"].str.strip() != ""
+        ]
+
+        mgr_risk = (
+            mgr_risk_base
+            .groupby(["구역담당자_통합", "리스크등급"])["계약번호_정제"]
             .nunique()
-            .unstack(fill_value=0)
+            .reset_index(name="계약수")
         )
 
-        mgr_group = mgr_group[
-            mgr_group.sum(axis=1).sort_values(ascending=False).head(15).index
-        ].reset_index()
+        if mgr_risk.empty:
+            st.info("담당자 데이터가 없습니다.")
+            mgr_group = pd.DataFrame()
+        else:
+            pivot_mgr = (
+                mgr_risk
+                .pivot(index="구역담당자_통합", columns="리스크등급", values="계약수")
+                .fillna(0)
+            )
+            stack_cols_mgr = [c for c in ["HIGH", "MEDIUM", "LOW"] if c in pivot_mgr.columns]
+            if stack_cols_mgr:
+                pivot_mgr["총계"] = pivot_mgr[stack_cols_mgr].sum(axis=1)
+                pivot_mgr = pivot_mgr.sort_values("총계", ascending=False).head(15)
+                pivot_mgr = pivot_mgr.drop(columns=["총계"])
+                mgr_group = pivot_mgr  # Drill-down용 저장
 
-        for col in ["HIGH", "MEDIUM", "LOW"]:
-            if col not in mgr_group.columns:
-                mgr_group[col] = 0
+                mgr_plot_df = pivot_mgr.reset_index()
+                force_stacked_bar(
+                    mgr_plot_df,
+                    x="구역담당자_통합",
+                    y_cols=stack_cols_mgr,
+                    height=300,
+                )
+            else:
+                st.info("리스크등급 데이터가 부족합니다.")
+                mgr_group = pd.DataFrame()
 
-        force_stacked_bar(
-            mgr_group,
-            "구역담당자_통합",
-            ["HIGH", "MEDIUM", "LOW"],
-            height=320,
-        )
-
-    # ============================================================
-    # 3) 리스크등급 분포 (적층)
-    # ============================================================
+    # ======================================================
+    # 3) 전체 리스크 등급 분포 — 적층 단일 막대
+    # ======================================================
     with c2b:
-        st.markdown("### 🔥 리스크 등급 분포 (적층)")
+        st.markdown("### 🔥 리스크 등급 분포 (계약 단위, 적층 막대)")
 
-        risk_total = (
-            viz_filtered.groupby(["리스크등급", "관리지사"])["계약번호_정제"]
-            .nunique()
-            .unstack(fill_value=0)
-            .T
-            .reset_index()
+        rc = (
+            viz_filtered["리스크등급"]
+            .value_counts()
+            .reindex(["HIGH", "MEDIUM", "LOW"])
+            .fillna(0)
         )
 
-        for col in ["HIGH", "MEDIUM", "LOW"]:
-            if col not in risk_total.columns:
-                risk_total[col] = 0
+        stack_cols_rc = [lvl for lvl in ["HIGH", "MEDIUM", "LOW"] if lvl in rc.index]
 
-        force_stacked_bar(
-            risk_total,
-            "관리지사",
-            ["HIGH", "MEDIUM", "LOW"],
-            height=320,
-        )
+        if not stack_cols_rc:
+            st.info("리스크등급 데이터가 없습니다.")
+        else:
+            risk_df = pd.DataFrame({"구분": ["전체"]})
+            for lvl in stack_cols_rc:
+                risk_df[lvl] = [rc[lvl]]
 
-    # ============================================================
-    # 4) 일별 추이
-    # ============================================================
+            force_stacked_bar(
+                risk_df,
+                x="구분",
+                y_cols=stack_cols_rc,
+                height=300,
+            )
+
+    # ======================================================
+    # 4) 일별 비매칭 계약 추이 (라인)
+    # ======================================================
     st.markdown("---")
     st.markdown("### 📈 일별 비매칭 계약 추이")
 
@@ -1063,32 +1108,158 @@ with tab_viz:
             viz_filtered.assign(접수일=viz_filtered["접수일시"].dt.date)
             .groupby("접수일")["계약번호_정제"]
             .nunique()
+            .rename("비매칭계약수")
+            .sort_index()
         )
-        st.line_chart(trend)
+        if HAS_PLOTLY:
+            fig4 = px.line(trend.reset_index(), x="접수일", y="비매칭계약수")
+            fig4.update_layout(
+                height=260,
+                margin=dict(l=40, r=20, t=40, b=40),
+                xaxis_title="접수일",
+                yaxis_title="비매칭 계약 수",
+            )
+            st.plotly_chart(fig4, use_container_width=True)
+        else:
+            st.line_chart(trend, use_container_width=True, height=260)
+    else:
+        st.info("접수일시 데이터가 없어 추이를 표시할 수 없습니다.")
 
-    # ============================================================
-    # 5) 텍스트 키워드 분석
-    # ============================================================
-    st.markdown("### 📝 텍스트 키워드 분석")
+    # ======================================================
+    # 5) 담당자 리스크 레이더 (선택된 담당자 기준)
+    # ======================================================
+    if sel_mgr_viz != "(전체)" and HAS_PLOTLY:
+        mgr_data = viz_filtered[
+            viz_filtered["구역담당자_통합"].astype(str) == sel_mgr_viz
+        ]
+        if not mgr_data.empty:
+            radar = (
+                mgr_data["리스크등급"]
+                .value_counts()
+                .reindex(["HIGH", "MEDIUM", "LOW"])
+                .fillna(0)
+            )
+            radar_df = pd.DataFrame(
+                {"리스크": ["HIGH", "MEDIUM", "LOW"], "계약수": radar.values}
+            )
+            fig_radar = px.line_polar(
+                radar_df,
+                r="계약수",
+                theta="리스크",
+                line_close=True,
+            )
+            fig_radar.update_layout(
+                height=320,
+                margin=dict(l=40, r=20, t=40, b=20),
+                title=f"🌐 {sel_mgr_viz} 담당자의 리스크 프로파일",
+            )
+            st.plotly_chart(fig_radar, use_container_width=True)
+
+    # ======================================================
+    # 6) Drill-down — 지사 / 담당자별 상세 리스트
+    # ======================================================
+    st.markdown("---")
+    dcol1, dcol2 = st.columns(2)
+
+    # 🔍 지사 Drill-down
+    with dcol1:
+        st.markdown("#### 🔎 지사 상세 Drill-down")
+
+        if not branch_risk.empty:
+            # 비매칭이 1건 이상인 지사만
+            if 'pivot_branch' in locals():
+                valid_branch = pivot_branch.copy()
+                if 'HIGH' in valid_branch.columns or 'MEDIUM' in valid_branch.columns or 'LOW' in valid_branch.columns:
+                    valid_branch["총계"] = valid_branch.sum(axis=1)
+                    branch_candidates = valid_branch[valid_branch["총계"] > 0].index.tolist()
+                else:
+                    branch_candidates = valid_branch.index.tolist()
+            else:
+                branch_candidates = branch_risk["관리지사"].unique().tolist()
+
+            drill_branch = st.selectbox(
+                "상세 조회할 지사 선택",
+                options=["(선택)"] + branch_candidates,
+                index=0,
+                key="viz_drill_branch",
+            )
+
+            if drill_branch != "(선택)":
+                df_branch_detail = viz_filtered[viz_filtered["관리지사"] == drill_branch]
+
+                st.markdown(f"##### 📍 {drill_branch} 지사 비매칭 상세 ({len(df_branch_detail)}건)")
+                st.dataframe(
+                    style_risk(df_branch_detail[display_cols]),
+                    use_container_width=True,
+                    height=350,
+                )
+        else:
+            st.info("지사 Drill-down 대상 데이터가 없습니다.")
+
+    # 🔍 담당자 Drill-down
+    with dcol2:
+        st.markdown("#### 🔎 담당자 상세 Drill-down")
+
+        if 'mgr_group' in locals() and not mgr_group.empty:
+            mgr_candidates = mgr_group.index.tolist()
+            drill_mgr = st.selectbox(
+                "상세 조회할 담당자 선택",
+                options=["(선택)"] + [str(m) for m in mgr_candidates],
+                index=0,
+                key="viz_drill_mgr",
+            )
+
+            if drill_mgr != "(선택)":
+                df_mgr_detail = viz_filtered[
+                    viz_filtered["구역담당자_통합"].astype(str) == drill_mgr
+                ]
+
+                st.markdown(f"##### 👤 {drill_mgr} 담당자 비매칭 상세 ({len(df_mgr_detail)}건)")
+                st.dataframe(
+                    style_risk(df_mgr_detail[display_cols]),
+                    use_container_width=True,
+                    height=350,
+                )
+        else:
+            st.info("담당자 Drill-down 대상 데이터가 없습니다.")
+
+    # ======================================================
+    # 7) 텍스트 키워드 분석 (등록내용 + 처리내용 + 해지상세 + VOC유형소)
+    # ======================================================
+    st.markdown("---")
+    st.markdown("### 📝 텍스트 키워드 분석 (등록내용 + 처리내용 + 해지상세 + VOC유형소)")
 
     text_cols = ["등록내용", "처리내용", "해지상세", "VOC유형소"]
     available_cols = [c for c in text_cols if c in viz_filtered.columns]
 
-    if available_cols:
+    if not available_cols:
+        st.info("분석 가능한 텍스트 컬럼이 없습니다.")
+    else:
         texts = []
         for col in available_cols:
-            texts.extend(viz_filtered[col].dropna().astype(str).tolist())
+            texts.extend(
+                viz_filtered[col].dropna().astype(str).tolist()
+            )
 
         full_text = " ".join(texts)
-        if len(full_text) > 5:
+
+        if len(full_text.strip()) < 5:
+            st.info("텍스트 데이터가 충분하지 않아 분석할 수 없습니다.")
+        else:
             import re
             from collections import Counter
 
+            # 한글/영문 2글자 이상 단어 추출
             words = re.findall(r"[가-힣A-Za-z]{2,}", full_text)
-            freq = Counter(words).most_common(50)
 
-            freq_df = pd.DataFrame(freq, columns=["단어", "빈도"])
-            force_bar_chart(freq_df, "단어", "빈도", height=350)
+            if not words:
+                st.info("분석 가능한 키워드가 없습니다.")
+            else:
+                freq = Counter(words).most_common(50)
+                freq_df = pd.DataFrame(freq, columns=["단어", "빈도"])
+
+                st.markdown("#### 🔍 최다 빈도 단어 TOP 50")
+                force_bar_chart(freq_df, "단어", "빈도", height=350)
 
 # ----------------------------------------------------
 # TAB ALL — VOC 전체 (계약번호 기준 요약)
