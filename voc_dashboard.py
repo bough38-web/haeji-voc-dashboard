@@ -1178,34 +1178,6 @@ with tab_viz:
         st.markdown("#### 🔍 최다 빈도 단어 TOP 50")
         force_bar_chart(freq_df, "단어", "빈도", height=350)
 
-    # ======================================================
-    # 7) Drill-down
-    # ======================================================
-    st.markdown("---")
-    st.markdown("### 🔍 상세 Drill-down (지사 / 담당자)")
-
-    drill_branch = st.selectbox(
-        "지사 선택",
-        options=["(선택)"] + viz_filtered["관리지사"].unique().tolist(),
-        key="viz_drill_branch",
-    )
-
-    if drill_branch != "(선택)":
-        df_bd = viz_filtered[viz_filtered["관리지사"] == drill_branch]
-        st.dataframe(df_bd[display_cols], height=300, use_container_width=True)
-
-    drill_mgr = st.selectbox(
-        "담당자 선택",
-        options=["(선택)"] + viz_filtered["구역담당자_통합"].unique().tolist(),
-        key="viz_drill_mgr",
-    )
-
-    if drill_mgr != "(선택)":
-        df_md = viz_filtered[
-            viz_filtered["구역담당자_통합"].astype(str) == drill_mgr
-        ]
-        st.dataframe(df_md[display_cols], height=300, use_container_width=True)
-
 # ----------------------------------------------------
 # TAB ALL — VOC 전체 (계약번호 기준 요약)
 # ----------------------------------------------------
