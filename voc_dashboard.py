@@ -872,14 +872,17 @@ tab_viz, tab_all, tab_unmatched, tab_drill, tab_filter, tab_alert = st.tabs(
 # ====================================================
 # TAB VIZ — 지사 / 담당자 시각화 (개선 최종버전)
 # ====================================================
-# TAB VIZ 보호용
-if "리스크등급" not in viz_base.columns:
-    viz_base["리스크등급"] = "LOW"
-
 with tab_viz:
+    # 📌 viz_base 초기화 — unmatched_global 복사
+    viz_base = unmatched_global.copy()
+
+    # ✅ 리스크등급 컬럼 보호: 없으면 기본값 "LOW" 부여
+    if "리스크등급" not in viz_base.columns:
+        viz_base["리스크등급"] = "LOW"
+
     st.subheader("📊 지사 / 담당자별 비매칭 리스크 현황")
 
-    if unmatched_global.empty:
+    if viz_base.empty:
         st.info("현재 조건에서 비매칭(X) 데이터가 없습니다.")
         st.stop()
 
@@ -905,7 +908,7 @@ with tab_viz:
     # -------------------------
     # 지사 선택
     # -------------------------
-    b_opts = ["전체"] + sort_branch(unmatched_global["관리지사"].dropna().unique())
+    b_opts = ["전체"] + sort_branch(viz_base["관리지사"].dropna().unique())
     sel_b_viz = colA.pills(
         "🏢 지사 선택",
         options=b_opts,
@@ -918,7 +921,7 @@ with tab_viz:
     # -------------------------
     # 담당자 선택
     # -------------------------
-    tmp_mgr = unmatched_global.copy()
+    tmp_mgr = viz_base.copy()
     if sel_b_viz != "전체":
         tmp_mgr = tmp_mgr[tmp_mgr["관리지사"] == sel_b_viz]
 
@@ -934,111 +937,75 @@ with tab_viz:
         key="viz_mgr",
     )
 
-    # ======================================================
-    # 📌 공통: 그래프 강제 출력 함수 (Plotly/Fallback)
-    # ======================================================
-    def force_bar_chart(df, x, y, height=280):
-        """Plotly 있으면 Plotly, 없으면 Streamlit 그래프. 빈 DF도 0으로 표시."""
-        if df.empty:
-            df = pd.DataFrame({x: ["데이터없음"], y: [0]})
-
-        # Plotly 렌더링
-        if HAS_PLOTLY:
-            max_y = df[y].max()
-            fig = px.bar(df, x=x, y=y, text=y)
-            fig.update_traces(textposition="outside", textfont_size=11)
-            fig.update_yaxes(range=[0, max_y * 1.3 if max_y > 0 else 1])
-            fig.update_layout(
-                height=height,
-                margin=dict(l=40, r=20, t=60, b=40),
-            )
-            st.plotly_chart(fig, use_container_width=True)
-        else:
-            st.bar_chart(df.set_index(x)[y], height=height, use_container_width=True)
-
-    # -------------------------
-    # 필터가 적용된 데이터
-    # -------------------------
-    viz_base = unmatched_global.copy()
+    # -------------------------------------------------
+    # 필터된 데이터 적용
+    viz_filtered = viz_base.copy()
     if sel_b_viz != "전체":
-        viz_base = viz_base[viz_base["관리지사"] == sel_b_viz]
+        viz_filtered = viz_filtered[viz_filtered["관리지사"] == sel_b_viz]
     if sel_mgr_viz != "(전체)":
-        viz_base = viz_base[viz_base["구역담당자_통합"].astype(str) == sel_mgr_viz]
+        viz_filtered = viz_filtered[viz_filtered["구역담당자_통합"].astype(str) == sel_mgr_viz]
 
     # ======================================================
-    # 1) 지사별 비매칭 그래프
+    # 1) 지사별 비매칭 계약 수 (유니크 계약)
     # ======================================================
     st.markdown("### 🧱 지사별 비매칭 계약 수 (유니크 계약)")
 
     bc = (
-        viz_base.groupby("관리지사")["계약번호_정제"]
+        viz_filtered.groupby("관리지사")["계약번호_정제"]
         .nunique()
         .rename("비매칭계약수")
     )
     bc = bc.reindex(BRANCH_ORDER).fillna(0).astype(int)
-
     force_bar_chart(bc.reset_index(), "관리지사", "비매칭계약수", height=260)
 
     # ======================================================
-    # 2) 담당자별 TOP 15
+    # 2) 담당자별 비매칭 TOP 15
     # ======================================================
     c2a, c2b = st.columns(2)
-
     with c2a:
         st.markdown("### 👤 담당자별 비매칭 TOP 15 (유니크 계약)")
-
         mc = (
-            viz_base.groupby("구역담당자_통합")["계약번호_정제"]
+            viz_filtered.groupby("구역담당자_통합")["계약번호_정제"]
             .nunique()
             .rename("비매칭계약수")
             .sort_values(ascending=False)
         )
         mc = mc[mc.index.astype(str).str.strip() != ""].head(15)
-
         mc_df = mc.reset_index()
         mc_df.columns = ["구역담당자_통합", "비매칭계약수"]
-
         force_bar_chart(mc_df, "구역담당자_통합", "비매칭계약수", height=300)
 
     # ======================================================
-    # 3) 리스크 등급 분포
+    # 3) 리스크 등급 분포 (계약 단위)
     # ======================================================
-with c2b:
-    st.markdown("### 🔥 리스크 등급 분포 (계약 단위)")
+    with c2b:
+        st.markdown("### 🔥 리스크 등급 분포 (계약 단위)")
+        if "리스크등급" in viz_filtered.columns:
+            rc = (
+                viz_filtered["리스크등급"]
+                .value_counts()
+                .reindex(["HIGH", "MEDIUM", "LOW"])
+                .fillna(0)
+            )
+            rc_df = pd.DataFrame({"리스크등급": rc.index, "건수": rc.values})
+            force_bar_chart(rc_df, "리스크등급", "건수", height=300)
+        else:
+            st.info("리스크등급 데이터가 없어 분포를 표시할 수 없습니다.")
 
-    # 리스크등급 컬럼 있는지 확인
-    if "리스크등급" not in viz_base.columns:
-        st.info("리스크등급 데이터가 없어 분포를 그릴 수 없습니다.")
-    else:
-        rc = (
-            viz_base["리스크등급"]
-            .value_counts()
-            .reindex(["HIGH", "MEDIUM", "LOW"])
-            .fillna(0)
-        )
-        rc_df = pd.DataFrame({"리스크등급": rc.index, "건수": rc.values})
-        force_bar_chart(rc_df, "리스크등급", "건수", height=300)
     # ======================================================
-    # 4) 일별 추이
+    # 4) 일별 비매칭 계약 추이 (유니크 계약)
     # ======================================================
     st.markdown("---")
-    if "접수일시" in viz_base.columns and viz_base["접수일시"].notna().any():
+    if "접수일시" in viz_filtered.columns and viz_filtered["접수일시"].notna().any():
         trend = (
-            viz_base.assign(접수일=viz_base["접수일시"].dt.date)
+            viz_filtered.assign(접수일=viz_filtered["접수일시"].dt.date)
             .groupby("접수일")["계약번호_정제"]
             .nunique()
             .rename("비매칭계약수")
             .sort_index()
         )
-
-        st.markdown("### 📈 일별 비매칭 계약 추이 (유니크 계약)")
-
         if HAS_PLOTLY:
-            fig4 = px.line(
-                trend.reset_index(),
-                x="접수일",
-                y="비매칭계약수",
-            )
+            fig4 = px.line(trend.reset_index(), x="접수일", y="비매칭계약수")
             fig4.update_layout(
                 height=260,
                 margin=dict(l=40, r=20, t=40, b=40),
@@ -1050,10 +1017,12 @@ with c2b:
             st.line_chart(trend, use_container_width=True, height=260)
 
     # ======================================================
-    # 5) 담당자 레이더 차트
+    # 5) 담당자 레이더 차트 (선택된 담당자만)
     # ======================================================
     if sel_mgr_viz != "(전체)" and HAS_PLOTLY:
-        mgr_data = viz_base[viz_base["구역담당자_통합"].astype(str) == sel_mgr_viz]
+        mgr_data = viz_filtered[
+            viz_filtered["구역담당자_통합"].astype(str) == sel_mgr_viz
+        ]
         if not mgr_data.empty:
             radar = (
                 mgr_data["리스크등급"]
@@ -1061,11 +1030,9 @@ with c2b:
                 .reindex(["HIGH", "MEDIUM", "LOW"])
                 .fillna(0)
             )
-
             radar_df = pd.DataFrame(
                 {"리스크": ["HIGH", "MEDIUM", "LOW"], "계약수": radar.values}
             )
-
             fig_radar = px.line_polar(
                 radar_df,
                 r="계약수",
