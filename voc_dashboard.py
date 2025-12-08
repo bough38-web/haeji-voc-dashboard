@@ -849,6 +849,10 @@ tab_viz, tab_all, tab_unmatched, tab_drill, tab_filter, tab_alert = st.tabs(
 # ====================================================
 # TAB VIZ — 지사 / 담당자 시각화 (개선 최종버전)
 # ====================================================
+# TAB VIZ 보호용
+if "리스크등급" not in viz_base.columns:
+    viz_base["리스크등급"] = "LOW"
+
 with tab_viz:
     st.subheader("📊 지사 / 담당자별 비매칭 리스크 현황")
 
@@ -980,6 +984,8 @@ with tab_viz:
         st.markdown("### 🔥 리스크 등급 분포 (계약 단위)")
 
         rc = (
+    if "리스크등급" not in df_view.columns:
+        return df_view
             viz_base["리스크등급"]
             .value_counts()
             .reindex(["HIGH", "MEDIUM", "LOW"])
