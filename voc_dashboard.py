@@ -12,16 +12,24 @@ if "login_user" not in st.session_state:
 ADMIN_CODE = "C3A"   # 관리자 패스워드
 
 
-# ------------------------------
-# 로그인 폼
-# ------------------------------
-def login_form():
+# 로그인 시스템 (관리자 / 사용자) — 연락처 뒤 4자리로 로그인
 
+if "login_type" not in st.session_state:
+    st.session_state["login_type"] = None
+if "login_user" not in st.session_state:
+    st.session_state["login_user"] = None
+
+ADMIN_CODE = "C3A"   # 관리자 비밀번호
+
+# 예: 사용자 연락처 매핑 (예시 — 실제로는 contact_map 또는 DB에서 불러오기)
+# contacts_dict = { "홍길동": "1030507366", "김철수": "01012345678", ... }
+
+def login_form():
     st.markdown("## 🔐 로그인")
 
     tab_admin, tab_user = st.tabs(["관리자 로그인", "사용자 로그인"])
 
-    # ---- 관리자 ----
+    # --- 관리자 로그인 ---
     with tab_admin:
         pw = st.text_input("관리자 비밀번호", type="password", key="admin_pw")
         if st.button("관리자 로그인"):
@@ -33,31 +41,32 @@ def login_form():
             else:
                 st.error("비밀번호가 올바르지 않습니다.")
 
-    # ---- 사용자 ----
+    # --- 사용자 로그인 ---
     with tab_user:
         name = st.text_input("성명", key="user_name")
-        emp = st.text_input("5자리 사번", key="user_emp")
+        input_pw = st.text_input("연락처 뒷 4자리", type="password", key="user_pw")
 
         if st.button("사용자 로그인"):
-            if len(emp) == 5 and name.strip() != "":
-                st.session_state["login_type"] = "user"
-                st.session_state["login_user"] = name.strip()
-                st.success(f"{name} 님 로그인 성공")
-                st.rerun()
+            # 예: contacts_dict 에 사용자명으로 연락처가 저장되어 있다고 가정
+            real_tel = contacts_dict.get(name.strip())
+            if real_tel:
+                real_pw = real_tel[-4:]  # 뒤 4자리
+                if input_pw == real_pw:
+                    st.session_state["login_type"] = "user"
+                    st.session_state["login_user"] = name.strip()
+                    st.success(f"{name} 님 로그인 성공")
+                    st.rerun()
+                else:
+                    st.error("비밀번호가 올바르지 않습니다.")
             else:
-                st.error("성명 + 5자리 사번을 정확히 입력하세요.")
+                st.error("등록된 사용자명이 아닙니다.")
 
-
-# 로그인이 안 되어 있으면 모든 코드 중지
 if st.session_state["login_type"] is None:
     login_form()
     st.stop()
 
-# 로그인된 사용자 정보
-LOGIN_TYPE = st.session_state["login_type"]  # admin / user
+LOGIN_TYPE = st.session_state["login_type"]
 LOGIN_USER = st.session_state["login_user"]
-
-
 
 import os
 from datetime import datetime, date
