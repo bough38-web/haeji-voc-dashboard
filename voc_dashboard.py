@@ -1160,649 +1160,233 @@ def force_stacked_bar_animated(
 
 
 # ----------------------------------------------------
-# TAB VIZ — 지사 / 담당자 시각화
+# TAB VIZ — 지사 / 담당자 시각화 (완성본)
 # ----------------------------------------------------
 with tab_viz:
+
+    # ============================
+    # 초기 데이터 준비
+    # ============================
     viz_base = unmatched_global.copy()
+
     if "리스크등급" not in viz_base.columns:
         viz_base["리스크등급"] = "LOW"
 
     st.subheader("📊 지사 / 담당자별 비매칭 리스크 현황")
 
     if viz_base.empty:
-        st.info("현재 조건에서 비매칭(X) 데이터가 없습니다.")
+        st.info("비매칭(X) 데이터가 없습니다.")
         st.stop()
 
-    # UI 상단 안내 박스
-    st.markdown(
-        """
+    # ============================
+    # 필터 UI
+    # ============================
+    box = st.container()
+    with box:
+        st.markdown("""
         <div style="
             background:#ffffff;
             border:1px solid #e5e7eb;
             padding:14px 20px;
             border-radius:12px;
-            margin-bottom:18px;
+            margin-bottom:14px;
             box-shadow:0 2px 6px rgba(0,0,0,0.05);
         ">
-        <b>🎛️ 필터</b><br>
-        지사와 담당자를 선택하면 아래 모든 시각화가 즉시 갱신됩니다.
+        <b>🎛 필터</b><br>
+        지사와 담당자를 선택하면 아래 시각화가 갱신됩니다.
         </div>
-        """,
-        unsafe_allow_html=True,
-    )
+        """, unsafe_allow_html=True)
 
     colA, colB = st.columns(2)
 
-    # -----------------------------
     # 지사 선택
-    # -----------------------------
     b_opts = ["전체"] + sort_branch(viz_base["관리지사"].dropna().unique())
-    sel_b_viz = colA.pills(
-        "🏢 지사 선택",
-        options=b_opts,
-        selection_mode="single",
-        default="전체",
-        key="viz_branch",
-    )
-    sel_b_viz = sel_b_viz[0] if isinstance(sel_b_viz, list) else sel_b_viz
+    sel_b = colA.selectbox("🏢 지사 선택", b_opts)
 
-    # -----------------------------
     # 담당자 선택
-    # -----------------------------
-    tmp_mgr = viz_base.copy()
-    if sel_b_viz != "전체":
-        tmp_mgr = tmp_mgr[tmp_mgr["관리지사"] == sel_b_viz]
+    tmp = viz_base if sel_b == "전체" else viz_base[viz_base["관리지사"] == sel_b]
 
-    mgr_list_viz = sorted([
-        m for m in tmp_mgr["구역담당자_통합"].astype(str).unique().tolist()
+    mgr_list = sorted([
+        m for m in tmp["구역담당자_통합"].astype(str).unique().tolist()
         if m not in ["", "nan"]
     ])
 
-    sel_mgr_viz = colB.selectbox(
-        "👤 담당자 선택",
-        options=["(전체)"] + mgr_list_viz,
-        index=0,
-        key="viz_mgr",
-    )
+    sel_mgr = colB.selectbox("👤 담당자 선택", ["(전체)"] + mgr_list)
 
-    # -----------------------------
     # 필터 적용
-    # -----------------------------
     viz_filtered = viz_base.copy()
-    if sel_b_viz != "전체":
-        viz_filtered = viz_filtered[viz_filtered["관리지사"] == sel_b_viz]
-    if sel_mgr_viz != "(전체)":
-        viz_filtered = viz_filtered[
-            viz_filtered["구역담당자_통합"].astype(str) == sel_mgr_viz
-        ]
+    if sel_b != "전체":
+        viz_filtered = viz_filtered[viz_filtered["관리지사"] == sel_b]
+    if sel_mgr != "(전체)":
+        viz_filtered = viz_filtered[viz_filtered["구역담당자_통합"].astype(str) == sel_mgr]
 
     if viz_filtered.empty:
-        st.info("선택한 조건에서 비매칭(X) 데이터가 없습니다.")
+        st.warning("조건에 해당하는 데이터가 없습니다.")
         st.stop()
 
-# ------------------------------------------------
-# 🔹 적층 세로 막대그래프 (Plotly)
-# ------------------------------------------------
-def force_stacked_bar(df: pd.DataFrame, x: str, y_cols: list[str], height: int = 280):
-    """
-    Plotly 적용된 적층 세로 막대그래프
-    df: DataFrame
-    x: x축 컬럼명
-    y_cols: 적층할 수치 컬럼 리스트 ["HIGH","MEDIUM","LOW"]
-    """
-    if df.empty or not y_cols:
-        st.info("표시할 데이터가 없습니다.")
-        return
+    # ----------------------------------------------------
+    # 1) 지사별 비매칭 적층 막대
+    # ----------------------------------------------------
+    st.markdown("### 🧱 지사별 비매칭 계약수 — 리스크 적층")
 
-    if HAS_PLOTLY:
-        fig = px.bar(
-            df,
-            x=x,
-            y=y_cols,
-            barmode="stack",
-            text_auto=True,
-            height=height,
-        )
-        fig.update_layout(
-            margin=dict(l=40, r=20, t=40, b=40),
-        )
-        st.plotly_chart(fig, use_container_width=True)
-    else:
-        st.warning("Plotly가 설치되어야 적층 막대그래프를 표시할 수 있습니다.")
-    # ======================================================
-    # 2) 담당자 TOP 15 적층막대
-    # ======================================================
-    c2a, c2b = st.columns(2)
-
-    with c2a:
-        st.markdown("### 👤 담당자별 비매칭 TOP 15 (유니크 계약, 리스크 적층)")
-
-        mgr_risk = (
-            viz_filtered.groupby(["구역담당자_통합", "리스크등급"])["계약번호_정제"]
-            .nunique()
-            .reset_index(name="계약수")
-        )
-
-        if not mgr_risk.empty:
-            pivot_mgr = mgr_risk.pivot(
-                index="구역담당자_통합",
-                columns="리스크등급",
-                values="계약수"
-            ).fillna(0)
-
-            stack_cols_mgr = [c for c in ["HIGH", "MEDIUM", "LOW"] if c in pivot_mgr.columns]
-
-            pivot_mgr["총계"] = pivot_mgr[stack_cols_mgr].sum(axis=1)
-            pivot_mgr = pivot_mgr.sort_values("총계", ascending=False).head(15)
-            pivot_mgr.drop(columns=["총계"], inplace=True)
-
-            force_stacked_bar(
-                pivot_mgr.reset_index(),
-                x="구역담당자_통합",
-                y_cols=stack_cols_mgr,
-                height=300,
-            )
-        else:
-            st.info("담당자 데이터가 없습니다.")
-
-    # ======================================================
-    # 3) 전체 리스크 등급 분포 적층 단일 막대
-    # ======================================================
-    with c2b:
-        st.markdown("### 🔥 리스크 등급 분포 (계약 단위, 적층 막대)")
-
-        rc = (
-            viz_filtered["리스크등급"].value_counts()
-            .reindex(["HIGH", "MEDIUM", "LOW"])
-            .fillna(0)
-        )
-
-        risk_df = pd.DataFrame({
-            "구분": ["전체"],
-            "HIGH": [rc["HIGH"]],
-            "MEDIUM": [rc["MEDIUM"]],
-            "LOW": [rc["LOW"]],
-        })
-
-        force_stacked_bar(
-            risk_df,
-            x="구분",
-            y_cols=["HIGH", "MEDIUM", "LOW"],
-            height=300,
-        )
-
-    # ======================================================
-    # 4) 일별 추이
-    # ======================================================
-    st.markdown("---")
-    st.markdown("### 📈 일별 비매칭 계약 추이")
-
-    if "접수일시" in viz_filtered.columns and viz_filtered["접수일시"].notna().any():
-        trend = (
-            viz_filtered.assign(접수일=viz_filtered["접수일시"].dt.date)
-            .groupby("접수일")["계약번호_정제"]
-            .nunique()
-            .sort_index()
-        )
-
-        fig4 = px.line(trend.reset_index(), x="접수일", y="계약번호_정제")
-        fig4.update_layout(height=260)
-        st.plotly_chart(fig4, use_container_width=True)
-    else:
-        st.info("접수일시 데이터가 없습니다.")
-
-    # ======================================================
-    # 5) 담당자 리스크 레이더
-    # ======================================================
-    if sel_mgr_viz != "(전체)" and HAS_PLOTLY:
-        mgr_data = viz_filtered[
-            viz_filtered["구역담당자_통합"].astype(str) == sel_mgr_viz
-        ]
-
-        if not mgr_data.empty:
-            radar = (
-                mgr_data["리스크등급"]
-                .value_counts()
-                .reindex(["HIGH", "MEDIUM", "LOW"])
-                .fillna(0)
-            )
-
-            radar_df = pd.DataFrame({
-                "리스크": ["HIGH", "MEDIUM", "LOW"],
-                "계약수": radar.values,
-            })
-
-            fig_radar = px.line_polar(
-                radar_df, r="계약수", theta="리스크", line_close=True
-            )
-            fig_radar.update_layout(height=320)
-            st.plotly_chart(fig_radar, use_container_width=True)
-
-# ======================================================
-# 8) 추가 분석 그래프 (산점도 / 트리맵 / 히스토그램 / 박스플롯 / 도넛차트)
-# ======================================================
-st.markdown("---")
-st.subheader("📐 추가 분석 그래프")
-
-# ------------------------------------------------------
-# 🔸 1. 산점도 (관리지사 / 담당자 / 계약건수 기반)
-# ------------------------------------------------------
-st.markdown("### 🔹 산점도 (관리지사 · 담당자 · 계약건수)")
-
-if {"관리지사", "구역담당자_통합", "계약번호_정제"}.issubset(viz_filtered.columns):
-
-    # 계약수 집계
-    scatter_df = (
-        viz_filtered.groupby(["관리지사", "구역담당자_통합", "리스크등급"])
-        .agg(계약수=("계약번호_정제", "nunique"))
-        .reset_index()
+    branch_risk = (
+        viz_filtered.groupby(["관리지사", "리스크등급"])["계약번호_정제"]
+        .nunique()
+        .reset_index(name="계약수")
     )
 
-    # 누락 표시 제거
-    scatter_df["구역담당자_통합"] = scatter_df["구역담당자_통합"].fillna("(미배정)")
+    pivot_branch = (
+        branch_risk.pivot(index="관리지사", columns="리스크등급", values="계약수")
+        .fillna(0)
+        .reindex(BRANCH_ORDER)
+        .fillna(0)
+    )
+
+    cols = [c for c in ["HIGH", "MEDIUM", "LOW"] if c in pivot_branch.columns]
+
+    force_stacked_bar(pivot_branch.reset_index(), "관리지사", cols, height=270)
+
+    # ----------------------------------------------------
+    # 2) 담당자 TOP 15 적층 막대
+    # ----------------------------------------------------
+    st.markdown("### 👤 담당자별 비매칭 TOP 15 — 리스크 적층")
+
+    mgr_risk = (
+        viz_filtered.groupby(["구역담당자_통합", "리스크등급"])["계약번호_정제"]
+        .nunique()
+        .reset_index(name="계약수")
+    )
+
+    pivot_mgr = mgr_risk.pivot(
+        index="구역담당자_통합",
+        columns="리스크등급",
+        values="계약수"
+    ).fillna(0)
+
+    cols_mgr = [c for c in ["HIGH", "MEDIUM", "LOW"] if c in pivot_mgr.columns]
+
+    pivot_mgr["총계"] = pivot_mgr[cols_mgr].sum(axis=1)
+    pivot_mgr = pivot_mgr.sort_values("총계", ascending=False).head(15)
+    pivot_mgr.drop(columns=["총계"], inplace=True)
+
+    force_stacked_bar(pivot_mgr.reset_index(), "구역담당자_통합", cols_mgr, height=320)
+
+    # ----------------------------------------------------
+    # 3) 리스크 도넛
+    # ----------------------------------------------------
+    st.markdown("### 🍩 리스크 등급 비율")
+
+    rc = viz_filtered["리스크등급"].value_counts().reset_index()
+    rc.columns = ["리스크등급", "건수"]
+
+    fig_donut = px.pie(
+        rc, names="리스크등급", values="건수", hole=0.5,
+        title="리스크 등급 비율"
+    )
+    st.plotly_chart(fig_donut, use_container_width=True)
+
+    # ----------------------------------------------------
+    # 4) 고급 산점도 (지사 컬러 + 버블크기 옵션)
+    # ----------------------------------------------------
+    st.markdown("### 🔵 확장형 산점도 (지사·담당자·계약규모)")
+
+    branch_color_map = {
+        "강릉": "#1f77b4",
+        "강북": "#ff7f0e",
+        "고양": "#2ca02c",
+        "남양주": "#d62728",
+        "서대문": "#9467bd",
+        "원주": "#8c564b",
+        "의정부": "#e377c2",
+        "중앙": "#7f7f7f",
+        "기타": "#bcbd22",
+    }
+
+    st.caption("버블 크기 옵션 / 담당자 라벨 옵션을 사용할 수 있습니다.")
+
+    bubble_col = st.selectbox("버블 크기 기준", ["계약건수", "월정료_수치", "경과일수"])
+
+    temp = viz_filtered.groupby(["관리지사", "구역담당자_통합"])["계약번호_정제"].nunique().reset_index()
+    temp.rename(columns={"계약번호_정제": "계약건수"}, inplace=True)
+
+    scatter_df = viz_filtered.merge(temp, on=["관리지사", "구역담당자_통합"], how="left")
+
+    size_col = bubble_col
 
     fig_scat = px.scatter(
         scatter_df,
         x="관리지사",
         y="구역담당자_통합",
-        size="계약수",
-        color="리스크등급",
-        hover_data=["계약수", "관리지사", "구역담당자_통합"],
-        title="관리지사 · 담당자별 계약규모 산점도",
+        size=size_col,
+        color="관리지사",
+        color_discrete_map=branch_color_map,
+        hover_data=["계약건수", "월정료_수치", "경과일수", "리스크등급"],
+        opacity=0.8,
+        title="지사·담당자 확장형 산점도",
     )
 
-    fig_scat.update_layout(height=450)
     st.plotly_chart(fig_scat, use_container_width=True)
 
-else:
-    st.info("관리지사 / 담당자 / 계약번호 정보를 찾을 수 없습니다.")
-# ------------------------------------------------------
-# 🔸 2. 트리맵 (지사 → 담당자 → 계약수)
-# ------------------------------------------------------
-if {"관리지사", "구역담당자_통합", "계약번호_정제"}.issubset(viz_filtered.columns):
-    st.markdown("### 🔹 트리맵 (지사 → 담당자 → 계약수)")
+    # ----------------------------------------------------
+    # 5) Treemap
+    # ----------------------------------------------------
+    st.markdown("### 🌳 Treemap (지사 → 담당자 → 리스크)")
 
     tree_df = (
-        viz_filtered.groupby(["관리지사", "구역담당자_통합"])
-        .agg(계약수=("계약번호_정제", "nunique"))
-        .reset_index()
+        viz_filtered.groupby(["관리지사", "구역담당자_통합", "리스크등급"])
+        ["계약번호_정제"].nunique()
+        .reset_index(name="계약수")
     )
 
     fig_tree = px.treemap(
         tree_df,
-        path=["관리지사", "구역담당자_통합"],
+        path=["관리지사", "구역담당자_통합", "리스크등급"],
         values="계약수",
-        title="지사-담당자 구조 트리맵",
-        color="계약수",
-        color_continuous_scale="Blues",
-    )
-    st.plotly_chart(fig_tree, use_container_width=True)
-# ------------------------------------------------------
-# 🔸 3. 히스토그램 (월정료 / 경과일)
-# ------------------------------------------------------
-if "월정료_수치" in viz_filtered.columns:
-    st.markdown("### 🔹 월정료 분포 (히스토그램)")
-    fig_fee_hist = px.histogram(
-        viz_filtered,
-        x="월정료_수치",
-        nbins=30,
-        title="월정료 분포",
-    )
-    st.plotly_chart(fig_fee_hist, use_container_width=True)
-
-if "경과일수" in viz_filtered.columns:
-    st.markdown("### 🔹 경과일수 분포 (히스토그램)")
-    fig_day_hist = px.histogram(
-        viz_filtered,
-        x="경과일수",
-        nbins=30,
-        title="VOC 경과일 분포",
-    )
-    st.plotly_chart(fig_day_hist, use_container_width=True)
-
-# ------------------------------------------------------
-# 🔸 4. 박스플롯 (지사별 월정료 / 경과일)
-# ------------------------------------------------------
-if "관리지사" in viz_filtered.columns and "월정료_수치" in viz_filtered.columns:
-    st.markdown("### 🔹 박스플롯 — 지사별 월정료 비교")
-    fig_fee_box = px.box(
-        viz_filtered,
-        x="관리지사",
-        y="월정료_수치",
-        points="all",
-        color="관리지사",
-    )
-    st.plotly_chart(fig_fee_box, use_container_width=True)
-
-if "관리지사" in viz_filtered.columns and "경과일" in viz_filtered.columns:
-    st.markdown("### 🔹 박스플롯 — 지사별 VOC 경과일 비교")
-    fig_day_box = px.box(
-        viz_filtered,
-        x="관리지사",
-        y="경과일수",
-        points="all",
-        color="관리지사",
-    )
-    st.plotly_chart(fig_day_box, use_container_width=True)
-
-# ------------------------------------------------------
-# 🔸 5. 도넛 차트 (리스크 등급 비율)
-# ------------------------------------------------------
-if "리스크등급" in viz_filtered.columns:
-    st.markdown("### 🔹 Risk 등급 비율 (도넛 차트)")
-    rc = viz_filtered["리스크등급"].value_counts().reset_index()
-    rc.columns = ["리스크등급", "건수"]
-
-    fig_donut = px.pie(
-        rc,
-        names="리스크등급",
-        values="건수",
-        hole=0.5,
-        title="리스크등급 비율",
-    )
-    st.plotly_chart(fig_donut, use_container_width=True)
-
-
-    # ======================================================
-    # 6) 텍스트 키워드 분석
-    # ======================================================
-    st.markdown("---")
-    st.markdown("### 📝 텍스트 키워드 분석 (등록내용 + 처리내용 + 해지상세 + VOC유형소)")
-
-    text_cols = ["등록내용", "처리내용", "해지상세", "VOC유형소"]
-    available_cols = [c for c in text_cols if c in viz_filtered.columns]
-
-    if available_cols:
-        texts = []
-        for col in available_cols:
-            texts.extend(viz_filtered[col].dropna().astype(str).tolist())
-
-        import re
-        from collections import Counter
-
-        words = re.findall(r"[가-힣A-Za-z]{2,}", " ".join(texts))
-        freq_df = pd.DataFrame(Counter(words).most_common(50), columns=["단어", "빈도"])
-
-        st.markdown("#### 🔍 최다 빈도 단어 TOP 50")
-        force_bar_chart(freq_df, "단어", "빈도", height=350)
-
-# ------------------------------------------------------------
-# 공통: 지사 색상 테마 설정
-# ------------------------------------------------------------
-branch_color_map = {
-    "강릉": "#1f77b4",
-    "강북": "#ff7f0e",
-    "고양": "#2ca02c",
-    "남양주": "#d62728",
-    "서대문": "#9467bd",
-    "원주": "#8c564b",
-    "의정부": "#e377c2",
-    "중앙": "#7f7f7f",
-    "기타": "#bcbd22",
-}
-
-st.markdown("### 🎛 산점도 필터 옵션")
-
-risk_filter = st.multiselect(
-    "리스크 등급 선택",
-    ["HIGH", "MEDIUM", "LOW"],
-    default=["HIGH", "MEDIUM", "LOW"],
-)
-
-mgr_search = st.text_input("담당자 검색어 입력 (부분검색 가능)")
-
-scatter_df = viz_filtered.copy()
-scatter_df = scatter_df[scatter_df["리스크등급"].isin(risk_filter)]
-
-if mgr_search:
-    scatter_df = scatter_df[
-        scatter_df["구역담당자_통합"].astype(str).str.contains(mgr_search)
-    ]
-
-show_labels = st.checkbox("버블 위에 담당자 이름 표시", value=False)
-
-st.markdown("### 🔵 고급 산점도 (지사 · 담당자 · 계약규모)")
-
-# 버블 크기 선택
-size_option = st.selectbox(
-    "버블 크기 기준",
-    ["계약건수", "월정료_수치", "경과일수"],
-    index=0,
-)
-
-if size_option == "계약건수":
-    temp = scatter_df.groupby(
-        ["관리지사", "구역담당자_통합"]
-    )["계약번호_정제"].nunique().reset_index()
-    temp.rename(columns={"계약번호_정제": "bubble_size"}, inplace=True)
-    scatter_df = scatter_df.merge(temp, on=["관리지사", "구역담당자_통합"], how="left")
-    size_col = "bubble_size"
-else:
-    size_col = size_option
-
-fig = px.scatter(
-    scatter_df,
-    x="관리지사",
-    y="구역담당자_통합",
-    size=size_col,
-    color="관리지사",
-    hover_data=["계약번호_정제", "월정료_수치", "경과일수", "리스크등급"],
-    color_discrete_map=branch_color_map,
-    opacity=0.8,
-)
-
-# 라벨 표시 옵션
-if show_labels:
-    fig.update_traces(text=scatter_df["구역담당자_통합"], textposition="top center")
-
-fig.update_layout(
-    height=600,
-    title="📌 지사 · 담당자별 계약규모 산점도 (확장형)",
-)
-st.plotly_chart(fig, use_container_width=True)
-
-st.markdown("### 📦 경과일수 박스플롯 (담당자별 지연 분석)")
-
-if "경과일수" in viz_filtered.columns:
-    fig_box = px.box(
-        viz_filtered,
-        x="구역담당자_통합",
-        y="경과일수",
         color="관리지사",
         color_discrete_map=branch_color_map,
-        title="담당자별 경과일수 분포 (지연 위험도 분석)",
-    )
-    fig_box.update_layout(height=550)
-    st.plotly_chart(fig_box, use_container_width=True)
-else:
-    st.info("경과일수 데이터가 없어 박스플롯을 표시할 수 없습니다.")
-
-st.markdown("### 🌳 Treemap (지사 → 담당자 → 리스크)")
-
-tree_df = (
-    viz_filtered
-    .groupby(["관리지사", "구역담당자_통합", "리스크등급"])["계약번호_정제"]
-    .nunique()
-    .reset_index(name="계약수")
-)
-
-fig_tree = px.treemap(
-    tree_df,
-    path=["관리지사", "구역담당자_통합", "리스크등급"],
-    values="계약수",
-    color="관리지사",
-    color_discrete_map=branch_color_map,
-)
-st.plotly_chart(fig_tree, use_container_width=True)
-
-def ai_voc_risk_predict(row):
-    text = " ".join([
-        str(row.get("등록내용", "")),
-        str(row.get("처리내용", "")),
-        str(row.get("해지상세", "")),
-    ]).lower()
-
-    # 기본값
-    reason = "미분류"
-    risk = "LOW"
-
-    # 규칙 기반 기본 분류
-    if any(k in text for k in ["비싸", "요금", "부담", "가격"]):
-        reason, risk = "경제적 사정", "MEDIUM"
-    if any(k in text for k in ["불만", "항의", "문의 많음", "불친절"]):
-        reason, risk = "서비스 불만", "HIGH"
-    if any(k in text for k in ["타사", "경쟁사", "이동"]):
-        reason, risk = "경쟁사 이동", "MEDIUM"
-
-    # 고급 모델 확장 가능 부분 (OpenAI/LLM)
-    # 여기서는 placeholder
-    # ex) gpt_model.predict(text)
-
-    return reason, risk
-
-st.markdown("### 🤖 AI 기반 VOC 위험군 자동 분석")
-
-ai_df = viz_filtered.copy()
-ai_df["AI_사유"], ai_df["AI_리스크"] = zip(*ai_df.apply(ai_voc_risk_predict, axis=1))
-
-ai_summary = ai_df["AI_리스크"].value_counts()
-
-fig_ai = px.bar(
-    ai_summary,
-    title="AI 추론 리스크 분포",
-    labels={"value": "건수", "index": "AI 리스크"},
-    text_auto=True,
-)
-st.plotly_chart(fig_ai, use_container_width=True)
-
-
-# ------------------------------------------------------
-# 🔸 4. 경과일수 박스플롯 (지사/담당자 지연 분석, 개선 버전)
-# ------------------------------------------------------
-st.markdown("### 📦 경과일수 박스플롯 (지사/담당자 지연 분석)")
-
-if "경과일수" in viz_filtered.columns:
-
-    # --- 상단 컨트롤 ---
-    c_box1, c_box2, c_box3 = st.columns([2, 2, 2])
-
-    # 지사 필터
-    branch_opts_box = ["전체"] + sort_branch(
-        viz_filtered["관리지사"].dropna().unique()
-    )
-    sel_branch_box = c_box1.selectbox(
-        "지사 선택",
-        options=branch_opts_box,
-        index=0,
-        key="box_branch",
     )
 
-    # 리스크 필터
-    risk_opts_box = ["HIGH", "MEDIUM", "LOW"]
-    sel_risk_box = c_box2.multiselect(
-        "리스크등급 필터",
-        options=risk_opts_box,
-        default=risk_opts_box,
-        key="box_risk",
+    st.plotly_chart(fig_tree, use_container_width=True)
+
+    # ----------------------------------------------------
+    # 6) 텍스트 키워드 분석
+    # ----------------------------------------------------
+    st.markdown("### 📝 텍스트 키워드 분석")
+
+    text_cols = ["등록내용", "처리내용", "해지상세", "VOC유형소"]
+    real_cols = [c for c in text_cols if c in viz_filtered.columns]
+
+    texts = []
+    for col in real_cols:
+        texts.extend(viz_filtered[col].dropna().astype(str).tolist())
+
+    import re
+    from collections import Counter
+
+    words = re.findall(r"[가-힣A-Za-z]{2,}", " ".join(texts))
+    freq_df = pd.DataFrame(Counter(words).most_common(50), columns=["단어", "빈도"])
+
+    force_stacked_bar(freq_df, "단어", ["빈도"], height=330)
+
+    # ----------------------------------------------------
+    # 7) AI 위험군 자동 분류
+    # ----------------------------------------------------
+    st.markdown("### 🤖 AI 기반 VOC 위험군 자동 분석")
+
+    ai_df = viz_filtered.copy()
+    ai_df["AI_사유"], ai_df["AI_리스크"] = zip(*ai_df.apply(ai_voc_risk_predict, axis=1))
+
+    ai_summary = ai_df["AI_리스크"].value_counts().reset_index()
+    ai_summary.columns = ["AI_리스크", "건수"]
+
+    fig_ai = px.bar(
+        ai_summary,
+        x="AI_리스크", y="건수",
+        text_auto=True,
+        title="AI 추론 리스크 분포"
     )
 
-    # 상위 N명 (경과일수 긴 담당자만 추리기)
-    top_n_mgr = c_box3.slider(
-        "상위 담당자 N (경과일수 중앙값 기준)",
-        min_value=5,
-        max_value=50,
-        value=20,
-        step=5,
-        key="box_top_n",
-    )
-
-    # --- 데이터 필터링 ---
-    box_df = viz_filtered.copy()
-
-    if sel_branch_box != "전체":
-        box_df = box_df[box_df["관리지사"] == sel_branch_box]
-
-    if sel_risk_box:
-        box_df = box_df[box_df["리스크등급"].isin(sel_risk_box)]
-
-    # 담당자/지사 라벨 생성: "지사 / 담당자"
-    box_df["담당자_라벨"] = (
-        box_df["관리지사"].fillna("미지정") + " / " +
-        box_df["구역담당자_통합"].fillna("미지정")
-    )
-
-    # 데이터가 없으면 종료
-    if box_df.empty:
-        st.info("선택한 조건에서 표시할 데이터가 없습니다.")
-    else:
-        # --- 담당자별 경과일수 중앙값/건수 집계 ---
-        agg_box = (
-            box_df.groupby(["관리지사", "구역담당자_통합", "담당자_라벨"])
-            .agg(
-                경과일수_중앙값=("경과일수", "median"),
-                계약건수=("계약번호_정제", "nunique"),
-            )
-            .reset_index()
-        )
-
-        # 경과일수 중앙값이 긴 담당자 상위 N명만 선택
-        agg_box = agg_box.sort_values(
-            "경과일수_중앙값", ascending=False
-        ).head(top_n_mgr)
-
-        top_labels = agg_box["담당자_라벨"].tolist()
-        box_df_top = box_df[box_df["담당자_라벨"].isin(top_labels)].copy()
-
-        st.caption(
-            f"표시 대상 담당자 수: {len(top_labels)}명 "
-            f"(경과일수 중앙값 상위 {top_n_mgr}명 기준)"
-        )
-
-        # --- 박스플롯 그리기 ---
-        fig_box = px.box(
-            box_df_top,
-            x="담당자_라벨",
-            y="경과일수",
-            color="관리지사",
-            points="outliers",  # 이상치만 점으로 표시
-            hover_data=[
-                "관리지사",
-                "구역담당자_통합",
-                "계약번호_정제",
-                "상호",
-                "리스크등급",
-            ],
-            title="담당자별 경과일수 분포 (지사 포함)",
-        )
-
-        # 전체 평균선 추가
-        mean_days = box_df_top["경과일수"].mean()
-        fig_box.add_hline(
-            y=mean_days,
-            line_dash="dash",
-            annotation_text=f"전체 평균 {mean_days:.1f}일",
-            annotation_position="top left",
-        )
-
-        # 레이아웃 튜닝 (라벨 회전/여백)
-        fig_box.update_layout(
-            xaxis_title="담당자 (지사 / 담당자명)",
-            yaxis_title="경과일수",
-            height=550,
-            margin=dict(l=40, r=20, t=60, b=180),
-            legend_title_text="관리지사",
-        )
-        fig_box.update_xaxes(
-            tickangle=-45,
-            tickfont=dict(size=10),
-            categoryorder="array",
-            categoryarray=top_labels,  # 중앙값 기준 정렬 유지
-        )
-
-        st.plotly_chart(fig_box, use_container_width=True)
-
-else:
-    st.info("경과일수 컬럼이 없습니다.")
+    st.plotly_chart(fig_ai, use_container_width=True)
 
 # ----------------------------------------------------
 # TAB ALL — VOC 전체 (계약번호 기준 요약)
