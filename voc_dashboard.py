@@ -592,12 +592,12 @@ def compute_risk(row):
     return days, level
 
 
-df_voc["경과일수"], df_voc["리스크등급"] = zip(
-    *df_voc.apply(lambda r: compute_risk(r), axis=1)
-)
-
-df_unmatched = df_voc[df_voc["매칭여부"] == "비매칭(X)"].copy()
-
+if LOGIN_TYPE == "user":
+    df_user = df_voc[df_voc["구역담당자_통합"] == LOGIN_USER]
+    unmatched_global = df_user[df_user["매칭여부"] == "비매칭(X)"]
+else:
+    unmatched_global = df_voc[df_voc["매칭여부"] == "비매칭(X)"]
+    
 # ----------------------------------------------------
 # 9. 표시 컬럼 정의 & 스타일링
 # ----------------------------------------------------
