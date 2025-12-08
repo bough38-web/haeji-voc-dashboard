@@ -904,6 +904,37 @@ with tab_branch_admin_report:
             height=450,
         )
 
+# ------------------------------------------------
+# 🔹 적층 세로 막대그래프 (Plotly)
+# ------------------------------------------------
+def force_stacked_bar(df: pd.DataFrame, x: str, y_cols: list[str], height: int = 280):
+    """
+    Plotly 적용된 적층 세로 막대그래프
+    df: DataFrame
+    x: x축 컬럼명
+    y_cols: 적층할 수치 컬럼 리스트 ["HIGH","MEDIUM","LOW"]
+    """
+    if df.empty or not y_cols:
+        st.info("표시할 데이터가 없습니다.")
+        return
+
+    if HAS_PLOTLY:
+        fig = px.bar(
+            df,
+            x=x,
+            y=y_cols,
+            barmode="stack",
+            text_auto=True,
+            height=height,
+        )
+        fig.update_layout(
+            margin=dict(l=40, r=20, t=40, b=40),
+        )
+        st.plotly_chart(fig, use_container_width=True)
+    else:
+        st.warning("Plotly가 설치되어야 적층 막대그래프를 표시할 수 있습니다.")
+
+
 # ----------------------------------------------------
 # TAB VIZ — 지사 / 담당자 시각화
 # ----------------------------------------------------
@@ -1173,15 +1204,6 @@ with tab_viz:
 
         st.markdown("#### 🔍 최다 빈도 단어 TOP 50")
         force_bar_chart(freq_df, "단어", "빈도", height=350)
-
-
-
-
-
-
-
-
-
 
 # ----------------------------------------------------
 # TAB ALL — VOC 전체 (계약번호 기준 요약)
