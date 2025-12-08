@@ -1067,6 +1067,51 @@ with tab_viz:
             )
             st.plotly_chart(fig_radar, use_container_width=True)
 
+    # ======================================================
+    # 6) 통합 워드클라우드 (등록내용 + 처리내용 + 해지상세 + VOC유형소)
+    # ======================================================
+    st.markdown("### 📝 워드 클라우드 분석 (등록내용 + 처리내용 + 해지상세 + VOC유형소)")
+
+    text_cols = ["등록내용", "처리내용", "해지상세", "VOC유형소"]
+
+    # 실제 존재하는 컬럼만 수집
+    available_cols = [c for c in text_cols if c in viz_filtered.columns]
+
+    if not available_cols:
+        st.info("분석 가능한 텍스트 컬럼이 없습니다.")
+    else:
+        # 모든 텍스트 합치기
+        text_list = []
+        for col in available_cols:
+            text_list.extend(
+                viz_filtered[col]
+                .dropna()
+                .astype(str)
+                .tolist()
+            )
+
+        joined_text = " ".join(text_list)
+
+        if len(joined_text.strip()) < 5:
+            st.info("워드클라우드를 생성할 만큼 텍스트 데이터가 충분하지 않습니다.")
+        else:
+            from wordcloud import WordCloud
+            import matplotlib.pyplot as plt
+
+            wc = WordCloud(
+                font_path=None,          # 필요하면 한글폰트 경로 지정
+                background_color="white",
+                width=900,
+                height=550,
+                colormap="tab20"
+            ).generate(joined_text)
+
+            fig, ax = plt.subplots(figsize=(11, 6))
+            ax.imshow(wc, interpolation="bilinear")
+            ax.axis("off")
+
+            st.pyplot(fig)
+
 # ----------------------------------------------------
 # TAB ALL — VOC 전체 (계약번호 기준 요약)
 # ----------------------------------------------------
