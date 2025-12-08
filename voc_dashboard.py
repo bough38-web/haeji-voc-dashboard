@@ -1309,7 +1309,7 @@ if "월정료_수치" in viz_filtered.columns and "경과일" in viz_filtered.co
     fig_scat = px.scatter(
         viz_filtered,
         x="월정료_수치",
-        y="경과일",
+        y="경과일수",
         color="리스크등급",
         hover_data=["관리지사", "구역담당자_통합", "계약번호_정제"],
         title="월정료 대비 경과일 산점도",
@@ -1351,11 +1351,11 @@ if "월정료_수치" in viz_filtered.columns:
     )
     st.plotly_chart(fig_fee_hist, use_container_width=True)
 
-if "경과일" in viz_filtered.columns:
-    st.markdown("### 🔹 경과일 분포 (히스토그램)")
+if "경과일수" in viz_filtered.columns:
+    st.markdown("### 🔹 경과일수 분포 (히스토그램)")
     fig_day_hist = px.histogram(
         viz_filtered,
-        x="경과일",
+        x="경과일수",
         nbins=30,
         title="VOC 경과일 분포",
     )
@@ -1380,7 +1380,7 @@ if "관리지사" in viz_filtered.columns and "경과일" in viz_filtered.column
     fig_day_box = px.box(
         viz_filtered,
         x="관리지사",
-        y="경과일",
+        y="경과일수",
         points="all",
         color="관리지사",
     )
@@ -1402,14 +1402,6 @@ if "리스크등급" in viz_filtered.columns:
         title="리스크등급 비율",
     )
     st.plotly_chart(fig_donut, use_container_width=True)
-
-
-
-
-
-
-
-    
 
 
     # ======================================================
@@ -1951,29 +1943,29 @@ with tab_drill:
         st.markdown("---")
         st.markdown("---")
 
-            c_left, c_right = st.columns(2)
+        c_left, c_right = st.columns(2)
 
-            with c_left:
-                st.markdown("#### 📘 VOC 이력 (전체)")
-                if voc_hist.empty:
-                    st.info("VOC 이력이 없습니다.")
-                else:
-                    st.dataframe(
-                        style_risk(voc_hist[display_cols]),
-                        use_container_width=True,
-                        height=320,
-                    )
+        with c_left:
+        st.markdown("#### 📘 VOC 이력 (전체)")
+              if voc_hist.empty:
+        st.info("VOC 이력이 없습니다.")
+              else:
+        st.dataframe(
+            style_risk(voc_hist[display_cols]),
+            use_container_width=True,
+            height=320,
+         )
 
-            with c_right:
-                st.markdown("#### 📂 기타 출처 이력 (해지시설/요청/설변/정지/파이프라인)")
-                if other_hist.empty:
-                    st.info("기타 출처 데이터가 없습니다.")
-                else:
-                    st.dataframe(
-                        other_hist,
-                        use_container_width=True,
-                        height=320,
-                    )
+        with c_right:
+        st.markdown("#### 📂 기타 출처 이력 (해지시설/요청/설변/정지/파이프라인)")
+              if other_hist.empty:
+        st.info("기타 출처 데이터가 없습니다.")
+              else:
+        st.dataframe(
+               other_hist,
+               use_container_width=True,
+               height=320,
+         )
 
 import re
 
@@ -2150,10 +2142,6 @@ def recommend_retention_policy(row: pd.Series) -> dict:
         "backup_action": backup,
         "comment": comment,
     }
-
-
-
-
 
 # ----------------------------------------------------
 # 글로벌 피드백 이력 & 입력 (선택된 sel_cn 기준)
