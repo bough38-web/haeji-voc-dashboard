@@ -745,7 +745,7 @@ st.sidebar.caption(f"마지막 갱신: {datetime.now().strftime('%Y-%m-%d %H:%M:
 # ----------------------------------------------------
 voc_filtered_global = df_voc.copy()
 
-# 날짜
+# 날짜 필터
 if dr and isinstance(dr, tuple) and len(dr) == 2:
     start_d, end_d = dr
     voc_filtered_global = voc_filtered_global[
@@ -753,20 +753,20 @@ if dr and isinstance(dr, tuple) and len(dr) == 2:
         & (voc_filtered_global["접수일시"] < pd.to_datetime(end_d) + pd.Timedelta(days=1))
     ]
 
-# 지사
+# 지사 필터
 if "전체" not in sel_branches:
     voc_filtered_global = voc_filtered_global[
         voc_filtered_global["관리지사"].isin(sel_branches)
     ]
 
-# 리스크
-if sel_risk:
+# ⭐ 리스크 등급 필터 — 컬럼 존재 여부 체크 후 적용
+if sel_risk and "리스크등급" in voc_filtered_global.columns:
     voc_filtered_global = voc_filtered_global[
         voc_filtered_global["리스크등급"].isin(sel_risk)
     ]
 
-# 매칭여부
-if sel_match:
+# 매칭여부 필터
+if sel_match and "매칭여부" in voc_filtered_global.columns:
     voc_filtered_global = voc_filtered_global[
         voc_filtered_global["매칭여부"].isin(sel_match)
     ]
@@ -793,7 +793,6 @@ if sel_fee_band != "전체" and fee_raw_col is not None:
         voc_filtered_global = voc_filtered_global[(fee >= 400000) & (fee < 500000)]
     elif sel_fee_band == "50만 이상":
         voc_filtered_global = voc_filtered_global[(fee >= 500000)]
-
 # ------------------------------
 # 🔐 로그인 타입에 따른 접근 제한
 # ------------------------------
