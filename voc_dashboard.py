@@ -567,69 +567,57 @@ def style_risk(df_view: pd.DataFrame):
 # ----------------------------------------------------
 # 10. 글로벌 필터 — 버튼형 UI + 월정료 10만원 단위 구간 적용
 # ----------------------------------------------------
+# ----------------------------------------------------
+# 8. 사이드바 - 글로벌 필터 (버튼 UI + 월정료 10만원 단위)
+# ----------------------------------------------------
 st.sidebar.title("🔧 글로벌 필터")
 
-# ========== 1) 접수일자 ==========
+# 날짜 필터
 if "접수일시" in df_voc.columns and df_voc["접수일시"].notna().any():
     min_d = df_voc["접수일시"].min().date()
     max_d = df_voc["접수일시"].max().date()
-
-    st.sidebar.markdown("#### 📅 접수일자 범위")
     dr = st.sidebar.date_input(
-        "",
+        "📅 접수일자 범위",
         value=(min_d, max_d),
         min_value=min_d,
         max_value=max_d,
-        key="global_date_range",
     )
 else:
     dr = None
 
-st.sidebar.markdown("---")
-
-# ========== 2) 지사 버튼 ==========
+# 지사 필터 → 버튼형 선택
 branches_all = sort_branch(df_voc["관리지사"].dropna().unique())
-sel_branches = st.sidebar.multiselect(
+sel_branches = st.sidebar.pills(
     "🏢 관리지사 선택",
-    options=branches_all,
-    default=branches_all,
-    key="global_branches_btn",
+    options=["전체"] + branches_all,
+    selection_mode="multi",
+    key="filter_branch_btn",
 )
 
-st.sidebar.markdown("---")
-
-# ========== 3) 리스크 등급 ==========
-st.sidebar.markdown("#### ⚠ 리스크 등급")
-risk_options = ["HIGH", "MEDIUM", "LOW"]
-
-sel_risk = st.sidebar.multiselect(
-    "",
-    options=risk_options,
-    default=risk_options,
-    key="global_risk_btn",
+# 리스크 등급 필터
+risk_all = ["HIGH", "MEDIUM", "LOW"]
+sel_risk = st.sidebar.pills(
+    "⚠ 리스크등급",
+    options=risk_all,
+    selection_mode="multi",
+    default=risk_all,
+    key="filter_risk_btn",
 )
 
-st.sidebar.markdown("---")
-
-# ========== 4) 매칭 여부 ==========
-st.sidebar.markdown("#### 🔍 매칭 여부")
-match_options = ["매칭(O)", "비매칭(X)"]
-
-sel_match = st.sidebar.multiselect(
-    "",
-    options=match_options,
-    default=match_options,
-    key="global_match_btn",
+# 매칭여부
+match_all = ["매칭(O)", "비매칭(X)"]
+sel_match = st.sidebar.pills(
+    "🔍 매칭여부",
+    options=match_all,
+    selection_mode="multi",
+    default=match_all,
+    key="filter_match_btn",
 )
 
-st.sidebar.markdown("---")
-
-# ========== 5) 월정료 구간(10만 단위) ==========
-st.sidebar.markdown("### 💰 월정료 구간")
-
-fee_segments = [
+# 🔥 월정료 구간 버튼 (10만원 단위)
+fee_bands = [
     "전체",
-    "10만 미만",
+    "0~10만",
     "10만~20만",
     "20만~30만",
     "30만~40만",
@@ -637,31 +625,31 @@ fee_segments = [
     "50만 이상",
 ]
 
-fee_filter_global = st.sidebar.radio(
-    "",
-    options=fee_segments,
+sel_fee_band = st.sidebar.radio(
+    "💰 월정료 구간",
+    options=fee_bands,
     index=0,
-    key="global_fee_btn",
+    key="filter_fee_band",
 )
 
 st.sidebar.markdown("---")
-st.sidebar.caption(f"🕓 마지막 갱신: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+st.sidebar.caption(f"마지막 갱신: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
 
 # ----------------------------------------------------
-# 11. 글로벌 필터 적용
+# 9. 글로벌 필터 적용
 # ----------------------------------------------------
 voc_filtered_global = df_voc.copy()
 
 # 날짜
 if dr and isinstance(dr, tuple) and len(dr) == 2:
-    sd, ed = dr
+    start_d, end_d = dr
     voc_filtered_global = voc_filtered_global[
-        (voc_filtered_global["접수일시"] >= pd.to_datetime(sd))
-        & (voc_filtered_global["접수일시"] < pd.to_datetime(ed) + pd.Timedelta(days=1))
+        (voc_filtered_global["접수일시"] >= pd.to_datetime(start_d))
+        & (voc_filtered_global["접수일시"] < pd.to_datetime(end_d) + pd.Timedelta(days=1))
     ]
 
 # 지사
-if sel_branches:
+if "전체" not in sel_branches:
     voc_filtered_global = voc_filtered_global[
         voc_filtered_global["관리지사"].isin(sel_branches)
     ]
@@ -672,35 +660,34 @@ if sel_risk:
         voc_filtered_global["리스크등급"].isin(sel_risk)
     ]
 
-# 매칭
+# 매칭여부
 if sel_match:
     voc_filtered_global = voc_filtered_global[
         voc_filtered_global["매칭여부"].isin(sel_match)
     ]
 
-# 월정료 구간
-if fee_filter_global != "전체":
-    fee = voc_filtered_global["월정료_수치"].astype(float)
+# 월정료 10만 단위 필터 적용
+if sel_fee_band != "전체":
+    fee = (
+        voc_filtered_global["시설_KTT월정료(조정)"]
+        .replace(",", "", regex=False)
+        .astype(float)
+        .fillna(-1)
+    )  # 월정료 컬럼 이름 다르면 알려줘!
 
-    if fee_filter_global == "10만 미만":
-        voc_filtered_global = voc_filtered_global[fee < 100000]
-
-    elif fee_filter_global == "10만~20만":
+    if sel_fee_band == "0~10만":
+        voc_filtered_global = voc_filtered_global[(fee >= 0) & (fee < 100000)]
+    elif sel_fee_band == "10만~20만":
         voc_filtered_global = voc_filtered_global[(fee >= 100000) & (fee < 200000)]
-
-    elif fee_filter_global == "20만~30만":
+    elif sel_fee_band == "20만~30만":
         voc_filtered_global = voc_filtered_global[(fee >= 200000) & (fee < 300000)]
-
-    elif fee_filter_global == "30만~40만":
+    elif sel_fee_band == "30만~40만":
         voc_filtered_global = voc_filtered_global[(fee >= 300000) & (fee < 400000)]
-
-    elif fee_filter_global == "40만~50만":
+    elif sel_fee_band == "40만~50만":
         voc_filtered_global = voc_filtered_global[(fee >= 400000) & (fee < 500000)]
+    elif sel_fee_band == "50만 이상":
+        voc_filtered_global = voc_filtered_global[(fee >= 500000)]
 
-    elif fee_filter_global == "50만 이상":
-        voc_filtered_global = voc_filtered_global[fee >= 500000]
-
-# 비매칭 추출
 unmatched_global = voc_filtered_global[
     voc_filtered_global["매칭여부"] == "비매칭(X)"
 ].copy()
