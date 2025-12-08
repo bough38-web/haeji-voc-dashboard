@@ -1240,35 +1240,35 @@ with tab_viz:
         st.info("선택한 조건에서 비매칭(X) 데이터가 없습니다.")
         st.stop()
 
-    # ======================================================
-    # 1) 지사별 비매칭 적층막대
-    # ======================================================
-    st.markdown("### 🧱 지사별 비매칭 계약 수 (유니크 계약, 리스크 적층)")
+# ------------------------------------------------
+# 🔹 적층 세로 막대그래프 (Plotly)
+# ------------------------------------------------
+def force_stacked_bar(df: pd.DataFrame, x: str, y_cols: list[str], height: int = 280):
+    """
+    Plotly 적용된 적층 세로 막대그래프
+    df: DataFrame
+    x: x축 컬럼명
+    y_cols: 적층할 수치 컬럼 리스트 ["HIGH","MEDIUM","LOW"]
+    """
+    if df.empty or not y_cols:
+        st.info("표시할 데이터가 없습니다.")
+        return
 
-    branch_risk = (
-        viz_filtered.groupby(["관리지사", "리스크등급"])["계약번호_정제"]
-        .nunique()
-        .reset_index(name="계약수")
-    )
-
-    if not branch_risk.empty:
-        pivot_branch = branch_risk.pivot(
-            index="관리지사", columns="리스크등급", values="계약수"
-        ).fillna(0)
-
-        pivot_branch = pivot_branch.reindex(BRANCH_ORDER).fillna(0)
-
-        stack_cols = [c for c in ["HIGH", "MEDIUM", "LOW"] if c in pivot_branch.columns]
-
-        force_stacked_bar(
-            pivot_branch.reset_index(),
-            x="관리지사",
-            y_cols=stack_cols,
-            height=260,
+    if HAS_PLOTLY:
+        fig = px.bar(
+            df,
+            x=x,
+            y=y_cols,
+            barmode="stack",
+            text_auto=True,
+            height=height,
         )
+        fig.update_layout(
+            margin=dict(l=40, r=20, t=40, b=40),
+        )
+        st.plotly_chart(fig, use_container_width=True)
     else:
-        st.info("지사별 데이터가 없습니다.")
-
+        st.warning("Plotly가 설치되어야 적층 막대그래프를 표시할 수 있습니다.")
     # ======================================================
     # 2) 담당자 TOP 15 적층막대
     # ======================================================
