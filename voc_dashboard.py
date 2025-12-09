@@ -6,7 +6,7 @@ from datetime import datetime, date
 import smtplib
 from email.message import EmailMessage
 import time
-from datetime import datetime
+from datetime import datetime 
 
 # ==============================
 # 0. 공통 설정 / 전역 상수
