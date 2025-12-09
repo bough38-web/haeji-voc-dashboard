@@ -7,6 +7,33 @@ import smtplib
 from email.message import EmailMessage
 
 # ==============================
+# 로그인 화면 중앙 위치 CSS
+# ==============================
+st.markdown("""
+<style>
+.login-container {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 360px;
+    padding: 35px;
+    background: rgba(255,255,255,0.92);
+    border-radius: 14px;
+    box-shadow: 0 6px 20px rgba(0,0,0,0.15);
+    backdrop-filter: blur(6px);
+}
+.login-title {
+    font-size: 26px;
+    font-weight: 700;
+    color: #005BAC;
+    text-align: center;
+    margin-bottom: 14px;
+}
+</style>
+""", unsafe_allow_html=True)
+
+# ==============================
 # 0. 공통 설정 / 전역 상수
 # ==============================
 
