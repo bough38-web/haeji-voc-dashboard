@@ -179,29 +179,6 @@ if st.session_state["login_user"] is None:
     st.markdown('</div></div>', unsafe_allow_html=True)
     st.stop()
 
-
-# ------------------------------------------------
-# 🔹 공통 막대그래프 (Plotly / 기본차트 자동 선택)
-# ------------------------------------------------
-def force_bar_chart(df: pd.DataFrame, x: str, y: str, height: int = 280):
-    """Plotly가 있으면 Plotly, 없으면 기본 bar_chart 사용."""
-    if df.empty:
-        df = pd.DataFrame({x: ["데이터없음"], y: [0]})
-
-    if HAS_PLOTLY:
-        fig = px.bar(df, x=x, y=y, text=y)
-        fig.update_traces(textposition="outside", textfont_size=11)
-        max_y = df[y].max()
-        fig.update_yaxes(range=[0, max_y * 1.3 if max_y > 0 else 1])
-        fig.update_layout(
-            height=height,
-            margin=dict(l=40, r=20, t=60, b=40),
-        )
-        st.plotly_chart(fig, use_container_width=True)
-    else:
-        st.bar_chart(df.set_index(x)[y], height=height, use_container_width=True)
-
-
     st.markdown("""
     <style>
     html, body {
@@ -343,6 +320,30 @@ def detect_column(df: pd.DataFrame, keywords: list[str]) -> str | None:
             if k.lower() in s.lower():
                 return col
     return None
+
+
+
+# ------------------------------------------------
+# 🔹 공통 막대그래프 (Plotly / 기본차트 자동 선택)
+# ------------------------------------------------
+def force_bar_chart(df: pd.DataFrame, x: str, y: str, height: int = 280):
+    """Plotly가 있으면 Plotly, 없으면 기본 bar_chart 사용."""
+    if df.empty:
+        df = pd.DataFrame({x: ["데이터없음"], y: [0]})
+
+    if HAS_PLOTLY:
+        fig = px.bar(df, x=x, y=y, text=y)
+        fig.update_traces(textposition="outside", textfont_size=11)
+        max_y = df[y].max()
+        fig.update_yaxes(range=[0, max_y * 1.3 if max_y > 0 else 1])
+        fig.update_layout(
+            height=height,
+            margin=dict(l=40, r=20, t=60, b=40),
+        )
+        st.plotly_chart(fig, use_container_width=True)
+    else:
+        st.bar_chart(df.set_index(x)[y], height=height, use_container_width=True)
+
 
 # ==============================
 # 4. 데이터 로드 함수
