@@ -179,104 +179,104 @@ if st.session_state["login_user"] is None:
     st.markdown('</div></div>', unsafe_allow_html=True)
     st.stop()
 
-    st.markdown("""
-    <style>
-    html, body {
-        background-color: #f5f5f7 !important;
-    }
-    .stApp {
-        background-color: #f5f5f7 !important;
-        color: #111827 !important;
-        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+st.markdown("""
+<style>
+html, body {
+    background-color: #f5f5f7 !important;
+}
+.stApp {
+    background-color: #f5f5f7 !important;
+    color: #111827 !important;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+.block-container {
+    padding-top: 1.4rem !important;
+    padding-bottom: 3rem !important;
+    padding-left: 1.0rem !important;
+    padding-right: 1.0rem !important;
+}
+[data-testid="stHeader"] {
+    background-color: #f5f5f7 !important;
+}
+section[data-testid="stSidebar"] {
+    background-color: #fafafa !important;
+    border-right: 1px solid #e5e7eb;
+}
+section[data-testid="stSidebar"] .block-container {
+    padding-top: 1.0rem;
+}
+h1, h2, h3, h4 {
+    margin-top: 0.4rem;
+    margin-bottom: 0.35rem;
+    font-weight: 600;
+}
+.dataframe tbody tr:nth-child(odd) {
+    background-color: #f9fafb;
+}
+.dataframe tbody tr:nth-child(even) {
+    background-color: #eef2ff;
+}
+textarea, input, select {
+    border-radius: 8px !important;
+}
+div[role="radiogroup"] > label {
+    padding-right: 0.75rem;
+}
+.section-card {
+    background: #ffffff;
+    border-radius: 16px;
+    padding: 1.0rem 1.2rem;
+    border: 1px solid #e5e7eb;
+    box-shadow: 0 4px 8px rgba(15, 23, 42, 0.04);
+    margin-bottom: 1.2rem;
+}
+.section-title {
+    font-size: 1.05rem;
+    font-weight: 600;
+    margin-bottom: 0.6rem;
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+}
+.feedback-item {
+    background-color: #f9fafb;
+    border-radius: 12px;
+    padding: 0.7rem 0.9rem;
+    margin-bottom: 0.6rem;
+    border: 1px solid #e5e7eb;
+}
+.feedback-meta {
+    font-size: 0.8rem;
+    color: #6b7280;
+    margin-top: 0.2rem;
+}
+.feedback-note {
+    font-size: 0.85rem;
+    color: #4b5563;
+    margin-top: 0.2rem;
+}
+.element-container:has(> div[data-testid="stMetric"]) {
+    padding-top: 0 !important;
+    padding-bottom: 0.4rem !important;
+}
+@media (max-width: 900px) {
+    [data-testid="column"] {
+        width: 100% !important;
+        flex-direction: column !important;
     }
     .block-container {
-        padding-top: 1.4rem !important;
-        padding-bottom: 3rem !important;
-        padding-left: 1.0rem !important;
-        padding-right: 1.0rem !important;
+        padding-left: 0.5rem !important;
+        padding-right: 0.5rem !important;
     }
-    [data-testid="stHeader"] {
-        background-color: #f5f5f7 !important;
-    }
-    section[data-testid="stSidebar"] {
-        background-color: #fafafa !important;
-        border-right: 1px solid #e5e7eb;
-    }
-    section[data-testid="stSidebar"] .block-container {
-        padding-top: 1.0rem;
-    }
-    h1, h2, h3, h4 {
-        margin-top: 0.4rem;
-        margin-bottom: 0.35rem;
-        font-weight: 600;
-    }
-    .dataframe tbody tr:nth-child(odd) {
-        background-color: #f9fafb;
-    }
-    .dataframe tbody tr:nth-child(even) {
-        background-color: #eef2ff;
-    }
-    textarea, input, select {
-        border-radius: 8px !important;
-    }
-    div[role="radiogroup"] > label {
-        padding-right: 0.75rem;
-    }
-    .section-card {
-        background: #ffffff;
-        border-radius: 16px;
-        padding: 1.0rem 1.2rem;
-        border: 1px solid #e5e7eb;
-        box-shadow: 0 4px 8px rgba(15, 23, 42, 0.04);
-        margin-bottom: 1.2rem;
-    }
-    .section-title {
-        font-size: 1.05rem;
-        font-weight: 600;
-        margin-bottom: 0.6rem;
-        display: flex;
-        align-items: center;
-        gap: 0.25rem;
-    }
-    .feedback-item {
-        background-color: #f9fafb;
-        border-radius: 12px;
-        padding: 0.7rem 0.9rem;
-        margin-bottom: 0.6rem;
-        border: 1px solid #e5e7eb;
-    }
-    .feedback-meta {
-        font-size: 0.8rem;
-        color: #6b7280;
-        margin-top: 0.2rem;
-    }
-    .feedback-note {
-        font-size: 0.85rem;
-        color: #4b5563;
-        margin-top: 0.2rem;
-    }
-    .element-container:has(> div[data-testid="stMetric"]) {
-        padding-top: 0 !important;
-        padding-bottom: 0.4rem !important;
-    }
-    @media (max-width: 900px) {
-        [data-testid="column"] {
-            width: 100% !important;
-            flex-direction: column !important;
-        }
-        .block-container {
-            padding-left: 0.5rem !important;
-            padding-right: 0.5rem !important;
-        }
-    }
-    [data-testid="stDataFrame"] div {
-        overflow-x: auto !important;
-    }
-    .js-plotly-plot .plotly {
-        background-color: transparent !important;
-    }
-    </style>
-    """, unsafe_allow_html=True)
+}
+[data-testid="stDataFrame"] div {
+    overflow-x: auto !important;
+}
+.js-plotly-plot .plotly {
+    background-color: transparent !important;
+}
+</style>
+""", unsafe_allow_html=True)
 
 
 # ==============================
