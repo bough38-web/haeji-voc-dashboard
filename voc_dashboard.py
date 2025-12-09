@@ -202,11 +202,6 @@ def force_bar_chart(df: pd.DataFrame, x: str, y: str, height: int = 280):
         st.bar_chart(df.set_index(x)[y], height=height, use_container_width=True)
 
 
-# ==============================
-# 1. 페이지 기본 설정 & CSS
-# ==============================
-st.set_page_config(page_title="해지 VOC 종합 대시보드", layout="wide")
-
 st.markdown(
     """
     <style>
@@ -308,7 +303,6 @@ st.markdown(
     """,
     unsafe_allow_html=True,
 )
-
 # ==============================
 # 2. SMTP 설정
 # ==============================
