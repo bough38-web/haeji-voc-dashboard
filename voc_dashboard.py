@@ -62,52 +62,64 @@ if st.session_state["login_user"] is None:
     # 🔵 전체 화면 배경 및 스타일
     # ---------------------------
     st.markdown("""
-        <style>
-            body {
-                background: linear-gradient(135deg, #E9F3FF 0%, #FFFFFF 100%) !important;
-            }
-            [data-testid="stAppViewContainer"] {
-                background-image: url('https://images.unsplash.com/photo-1526401485004-2aa7c3a7b6b0?auto=format&fit=crop&w=1600&q=80');
-                background-size: cover;
-                background-position: center;
-                filter: blur(3px);
-            }
-            .login-wrapper {
-                position: fixed;
-                top: 50%;
-                left: 50%;
-                transform: translate(-50%, -50%);
-                z-index: 999;
-            }
-            .login-card {
-                width: 360px;
-                padding: 35px;
-                border-radius: 14px;
-                background: rgba(255,255,255,0.92);
-                backdrop-filter: blur(6px);
-                box-shadow: 0 6px 20px rgba(0, 91, 172, 0.25);
-                animation: fadeIn 0.8s ease-out;
-                transition: transform 0.25s;
-            }
-            .login-card:hover {
-                transform: scale(1.02);
-            }
-            @keyframes fadeIn {
-                from { opacity: 0; transform: translate(-50%, -48%); }
-                to { opacity: 1; transform: translate(-50%, -50%); }
-            }
-            .login-title {
-                font-size: 28px;
-                font-weight: bold;
-                color: #005BAC;
-                margin-bottom: 15px;
-            }
-            .attempt-warning {
-                color: #d9534f;
-                font-weight: 600;
-                margin-top: 6px;
-            }
-        </style>
+    <style>
+        /* 전체 배경은 고정 이미지 + 살짝 흐림 */
+        .bg-blur-layer {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-image: url('https://images.unsplash.com/photo-1526401485004-2aa7c3a7b6b0?auto=format&fit=crop&w=1600&q=80');
+            background-size: cover;
+            background-position: center;
+            filter: blur(6px) brightness(0.8);
+            z-index: -1;
+        }
+
+        /* 로그인 wrapper는 항상 중앙 */
+        .login-wrapper {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            z-index: 999;
+        }
+
+        /* 로그인 카드 */
+        .login-card {
+            width: 360px;
+            padding: 35px;
+            border-radius: 14px;
+            background: rgba(255,255,255,0.95);
+            backdrop-filter: blur(3px);
+            box-shadow: 0 6px 20px rgba(0,0,0,0.2);
+            animation: fadeIn 0.7s ease-out;
+        }
+
+        .login-card:hover { transform: scale(1.02); }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translate(-50%, -48%); }
+            to   { opacity: 1; transform: translate(-50%, -50%); }
+        }
+
+        .login-title {
+            font-size: 28px;
+            font-weight: bold;
+            color: #005BAC;
+            margin-bottom: 16px;
+        }
+
+        .attempt-warning {
+            color: #d9534f;
+            font-weight: 600;
+            margin-top: 6px;
+        }
+    </style>
+
+    <div class="bg-blur-layer"></div>
+""", unsafe_allow_html=True)
     """, unsafe_allow_html=True)
 
     st.markdown('<div class="login-wrapper"><div class="login-card">', unsafe_allow_html=True)
