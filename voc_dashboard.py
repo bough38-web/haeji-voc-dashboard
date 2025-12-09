@@ -5,131 +5,47 @@ import os
 from datetime import datetime, date
 import smtplib
 from email.message import EmailMessage
+import time
+from datetime import datetime
 
 # ==============================
 # 0. 공통 설정 / 전역 상수
 # ==============================
+ADMIN_CODE = "C3A"
 
-# 세션 초기화
-if "login_type" not in st.session_state:
-    st.session_state["login_type"] = None
-if "login_user" not in st.session_state:
-    st.session_state["login_user"] = None
-
-ADMIN_CODE = "C3A"                 # 관리자 비밀번호
-MERGED_PATH = "merged.xlsx"        # VOC 통합파일
-FEEDBACK_PATH = "feedback.csv"     # 처리내역 CSV 저장 경로
-CONTACT_PATH = "contact_map.xlsx"  # 담당자 매핑 파일
-
-# ==============================
-# 1. 로그인 페이지 UI (정중앙)
-# ==============================
-
-# 로그인 필요 상태일 때만 표시
-if st.session_state["login_user"] is None:
-
-    # 중앙 정렬용 CSS
-    st.markdown("""
-        <style>
-            .login-wrapper {
-                height: 90vh;
-                display: flex;
-                justify-content: center;
-                align-items: center;
-            }
-            .login-card {
-                width: 360px;
-                padding: 30px 35px;
-                background: white;
-                border-radius: 14px;
-                box-shadow: 0 4px 14px rgba(0,0,0,0.15);
-                text-align: center;
-            }
-            .login-title {
-                font-size: 28px;
-                font-weight: 700;
-                margin-bottom: 18px;
-            }
-        </style>
-    """, unsafe_allow_html=True)
-
-    st.markdown('<div class="login-wrapper"><div class="login-card">', unsafe_allow_html=True)
-
-    # 제목
-    st.markdown('<div class="login-title">🔐 VOC Dashboard 로그인</div>', unsafe_allow_html=True)
-
-    # 선택: 관리자/지사/담당자 로그인
-    login_type = st.selectbox("로그인 유형을 선택하세요", ["지사", "담당자", "관리자"])
-
-    # 입력창
-    user_id = st.text_input("아이디", placeholder="아이디 입력")
-    pw = st.text_input("비밀번호", type="password", placeholder="비밀번호 입력")
-
-    # 로그인 버튼
-    if st.button("로그인", use_container_width=True):
-
-        if login_type == "관리자":
-            if pw == ADMIN_CODE:
-                st.session_state["login_user"] = "ADMIN"
-                st.success("관리자 로그인 성공")
-                st.rerun()
-            else:
-                st.error("관리자 비밀번호가 올바르지 않습니다.")
-
-        else:
-            # 일반 로그인 로직 (지사/담당자용)
-            if user_id.strip() != "" and pw.strip() != "":
-                st.session_state["login_user"] = user_id
-                st.session_state["login_type"] = login_type
-                st.success(f"{login_type} 로그인 성공")
-                st.rerun()
-            else:
-                st.warning("아이디와 비밀번호를 입력하세요.")
-
-    st.markdown('</div></div>', unsafe_allow_html=True)
-
-    # 로그인 UI만 보여주고 아래 코드 실행 중단
-    st.stop()
-
-# ==============================
-# 로그인 상태 관리
-# ==============================
-import time
-
-MAX_ATTEMPTS = 5  # 로그인 최대 시도 횟수
-
-if "login_attempts" not in st.session_state:
-    st.session_state["login_attempts"] = 0
-
-if "locked_until" not in st.session_state:
-    st.session_state["locked_until"] = None
-
-if "last_active" not in st.session_state:
-    st.session_state["last_active"] = time.time()
-
-
-# ==============================
-# ⏳ 자동 로그아웃 기능 (10분 비활성)
-# ==============================
+MAX_ATTEMPTS = 5
 AUTO_LOGOUT_SECONDS = 600  # 10분
 
+# 세션 초기화
+for key, default in [
+    ("login_user", None),
+    ("login_type", None),
+    ("login_attempts", 0),
+    ("locked_until", None),
+    ("last_active", time.time()),
+]:
+    if key not in st.session_state:
+        st.session_state[key] = default
+
+
+# ==============================
+# 📌 자동 로그아웃 기능
+# ==============================
 def check_auto_logout():
     if st.session_state["login_user"] is not None:
         inactive = time.time() - st.session_state["last_active"]
         if inactive > AUTO_LOGOUT_SECONDS:
             st.session_state["login_user"] = None
-            st.warning("10분 동안 활동이 없어 자동 로그아웃되었습니다.")
+            st.warning("10분 동안 미사용으로 자동 로그아웃되었습니다.")
             st.rerun()
 
-check_auto_logout()  # 페이지 로드 시 실행
 
-# 활동 갱신
-st.session_state["last_active"] = time.time()
-
+check_auto_logout()
+st.session_state["last_active"] = time.time()  # 활동 갱신
 
 
 # ==============================
-# ⛔ 로그인 잠금 체크
+# ⛔ 로그인 잠금 여부 체크
 # ==============================
 def is_locked():
     if st.session_state["locked_until"] is None:
@@ -138,12 +54,12 @@ def is_locked():
 
 
 # ==============================
-# 1. 로그인 UI (정중앙 + 애니메이션 + 배경)
+# 1. 로그인 페이지 (애니메이션 + 정중앙 + 배경)
 # ==============================
 if st.session_state["login_user"] is None:
 
     # ---------------------------
-    # 🔵 전체 페이지 배경 이미지 적용
+    # 🔵 전체 화면 배경 및 스타일
     # ---------------------------
     st.markdown("""
         <style>
@@ -168,7 +84,7 @@ if st.session_state["login_user"] is None:
                 padding: 35px;
                 border-radius: 14px;
                 background: rgba(255,255,255,0.92);
-                backdrop-filter: blur(5px);
+                backdrop-filter: blur(6px);
                 box-shadow: 0 6px 20px rgba(0, 91, 172, 0.25);
                 animation: fadeIn 0.8s ease-out;
                 transition: transform 0.25s;
@@ -181,10 +97,10 @@ if st.session_state["login_user"] is None:
                 to { opacity: 1; transform: translate(-50%, -50%); }
             }
             .login-title {
-                font-size: 26px;
-                font-weight: 700;
+                font-size: 28px;
+                font-weight: bold;
                 color: #005BAC;
-                margin-bottom: 10px;
+                margin-bottom: 15px;
             }
             .attempt-warning {
                 color: #d9534f;
@@ -198,31 +114,28 @@ if st.session_state["login_user"] is None:
 
     st.markdown('<div class="login-title">🔐 VOC Dashboard</div>', unsafe_allow_html=True)
 
-    # ---------------------------
-    # ⛔ 로그인 잠금 상태일 때
-    # ---------------------------
+    # 잠금 상태일 때
     if is_locked():
-        remaining = int(st.session_state["locked_until"] - time.time())
-        st.error(f"로그인이 잠겼습니다. {remaining}초 후 다시 시도하세요.")
+        remain = int(st.session_state["locked_until"] - time.time())
+        st.error(f"로그인이 잠겼습니다. {remain}초 후 다시 시도하세요.")
         st.stop()
 
     # ---------------------------
     # 로그인 입력 UI
     # ---------------------------
     login_type = st.selectbox("로그인 유형", ["지사", "담당자", "관리자"])
-    user_id = st.text_input("아이디 입력")
-    pw = st.text_input("비밀번호 입력", type="password")
+    user_id = st.text_input("아이디")
+    pw = st.text_input("비밀번호", type="password")
 
-    # 시도 가능 횟수 표시
     left = MAX_ATTEMPTS - st.session_state["login_attempts"]
     st.markdown(f"<div class='attempt-warning'>남은 시도 횟수: {left}회</div>", unsafe_allow_html=True)
 
     # ---------------------------
-    # 로그인 버튼 클릭
+    # 로그인 처리
     # ---------------------------
     if st.button("로그인", use_container_width=True):
 
-        # ❶ 관리자 로그인 처리
+        # 관리자 로그인
         if login_type == "관리자":
             if pw == ADMIN_CODE:
                 st.session_state["login_user"] = "ADMIN"
@@ -231,34 +144,28 @@ if st.session_state["login_user"] is None:
                 st.rerun()
             else:
                 st.session_state["login_attempts"] += 1
-                st.error("관리자 비밀번호가 잘못되었습니다.")
+                st.error("관리자 비밀번호가 틀렸습니다.")
 
-        # ❷ 일반 사용자 로그인
+        # 일반 로그인
         else:
-            if user_id.strip() != "" and pw.strip() != "":
+            if user_id.strip() and pw.strip():
                 st.session_state["login_user"] = user_id
+                st.session_state["login_type"] = login_type
                 st.session_state["login_attempts"] = 0
                 st.success("로그인 성공!")
                 st.rerun()
             else:
                 st.session_state["login_attempts"] += 1
-                st.error("아이디와 비밀번호를 확인하세요.")
+                st.error("아이디 또는 비밀번호가 올바르지 않습니다.")
 
-        # ❸ 5회 실패 → 5분 잠금
+        # 5회 실패 → 300초 잠금
         if st.session_state["login_attempts"] >= MAX_ATTEMPTS:
             st.session_state["locked_until"] = time.time() + 300
-            st.error("5회 이상 실패하여 5분 동안 로그인할 수 없습니다.")
+            st.error("5회 연속 실패로 로그인 잠금되었습니다. (5분)")
             st.rerun()
 
-    st.markdown("</div></div>", unsafe_allow_html=True)
+    st.markdown('</div></div>', unsafe_allow_html=True)
     st.stop()
-
-# Plotly 사용 여부
-try:
-    import plotly.express as px
-    HAS_PLOTLY = True
-except Exception:
-    HAS_PLOTLY = False
 
 
 # ------------------------------------------------
