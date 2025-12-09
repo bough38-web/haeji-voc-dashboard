@@ -1702,12 +1702,12 @@ with tab_viz:
     ai_df["AI_리스크"] = ai_df["리스크등급"]  # 향후 모델 교체 가능
 
     ai_summary = (
-        ai_df["AI_리스크"]
-        .value_counts()
-        .reset_index()
-        .rename(columns={"index": "AI_리스크", "AI_리스크": "건수"})
+    ai_df["AI_리스크"]
+    .value_counts()
+    .reset_index()  # DataFrame 변환
     )
-
+    ai_summary.columns = ["AI_리스크", "건수"]
+    
     fig_ai = px.bar(
         ai_summary,
         x="AI_리스크",
@@ -1716,7 +1716,6 @@ with tab_viz:
         title="AI 추론 리스크 분포 (현재는 기본 리스크등급 기반)",
     )
     st.plotly_chart(fig_ai, use_container_width=True)
-
 # ----------------------------------------------------
 # TAB ALL — VOC 전체 (계약번호 기준 요약)
 # ----------------------------------------------------
