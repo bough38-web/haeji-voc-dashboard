@@ -364,31 +364,33 @@ BRANCH_ADMIN_PW = {
 }
 
 # ==============================
-# 로그인 화면 중앙 위치 CSS
+# 로그인 스타일(CSS) 적용 ← ★ 이 부분이 정답!
 # ==============================
-st.markdown("""
+login_css = """
 <style>
-.login-container {
+.login-wrapper {
     position: fixed;
     top: 50%;
     left: 50%;
     transform: translate(-50%, -50%);
+}
+.login-card {
     width: 360px;
     padding: 35px;
     background: rgba(255,255,255,0.92);
     border-radius: 14px;
-    box-shadow: 0 6px 20px rgba(0,0,0,0.15);
-    backdrop-filter: blur(6px);
+    box-shadow: 0 6px 20px rgba(0, 91, 172, 0.25);
 }
 .login-title {
     font-size: 26px;
     font-weight: 700;
-    color: #005BAC;
     text-align: center;
-    margin-bottom: 14px;
+    margin-bottom: 12px;
+    color: #005BAC;
 }
 </style>
-""", unsafe_allow_html=True)
+"""
+st.markdown(login_css, unsafe_allow_html=True)
 
 # ==============================
 # 6. 로그인 폼 (연락처 뒷 4자리)
