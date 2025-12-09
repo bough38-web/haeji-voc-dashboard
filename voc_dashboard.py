@@ -1895,10 +1895,10 @@ with st.expander("ℹ️ 해지방어 활동시설 안내", expanded=True):
         
         if selected_branch_u != "전체":
             temp_u = temp_u[temp_u["관리지사"] == selected_branch_u]
-            
+        
         if selected_mgr_u != "전체":
-            temp_u = [temp_u[temp_u["구역담당자_통합"].astype(str) == selected_mgr_u]
-
+            temp_u = temp_u[temp_u["구역담당자_통합"].astype(str) == str(selected_mgr_u)]
+        
         if uq_cn:
             temp_u = temp_u[
                 temp_u["계약번호_정제"].astype(str).str.contains(uq_cn.strip())
