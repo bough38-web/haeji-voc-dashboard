@@ -472,7 +472,6 @@ if st.session_state["login_type"] is None:
 LOGIN_TYPE = st.session_state["login_type"]   # "admin" or "user"
 LOGIN_USER = st.session_state["login_user"]   # 관리자: ADMIN / 사용자: 성명
 
-
 # ==============================
 # 7. 기본 전처리 (지사, 담당자, 출처 등)
 # ==============================
