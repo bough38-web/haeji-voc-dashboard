@@ -846,7 +846,29 @@ def style_risk(df_view: pd.DataFrame):
 # ==============================
 st.sidebar.title("🔧 글로벌 필터")
 
-st.write("DEBUG max 
+if "접수일시" in df_voc.columns:
+    df_voc["접수일시"] = pd.to_datetime(
+        df_voc["접수일시"],
+        format="%Y-%m-%d %H:%M:%S.%f",
+        errors="coerce"
+    )
+
+    valid_dates = df_voc["접수일시"].dropna()
+
+    if not valid_dates.empty:
+        min_d = valid_dates.min().date()
+        max_d = valid_dates.max().date()
+
+        dr = st.sidebar.date_input(
+            "📅 접수일자 범위",
+            value=(min_d, max_d),
+            min_value=min_d,
+            max_value=max_d,
+        )
+    else:
+        dr = None
+else:
+    dr = None
 
 # 지사 필터
 branches_all = sort_branch(df_voc["관리지사"].dropna().unique())
