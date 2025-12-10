@@ -846,29 +846,62 @@ def style_risk(df_view: pd.DataFrame):
 # ==============================
 st.sidebar.title("🔧 글로벌 필터")
 
+# ==============================
+# 📌 날짜 파싱 엔진(완성 버전)
+# ==============================
+
+def parse_date_safe(x):
+    """모든 형태의 날짜를 강력하게 처리하는 통합 파서"""
+
+    if pd.isna(x):
+        return pd.NaT
+
+    # 이미 datetime 형태
+    if isinstance(x, (pd.Timestamp, datetime)):
+        return x
+
+    s = str(x).strip()
+
+    if s in ["", "None", "nan", "NaN"]:
+        return pd.NaT
+
+    # 기본 자동 파싱 시도
+    try:
+        dt = pd.to_datetime(s, errors="coerce", infer_datetime_format=True)
+        if pd.notna(dt):
+            return dt
+    except:
+        pass
+
+    # 사람이 입력한 다양한 패턴 수동 처리
+    date_formats = [
+        "%Y-%m-%d",
+        "%Y/%m/%d",
+        "%Y.%m.%d",
+        "%Y-%m-%d %H:%M",
+        "%Y/%m/%d %H:%M",
+        "%Y.%m.%d %H:%M",
+        "%Y-%m-%d %H:%M:%S",
+        "%Y/%m/%d %H:%M:%S",
+        "%Y.%m.%d %H:%M:%S",
+        "%Y-%m-%d %p %I:%M",
+        "%Y/%m/%d %p %I:%M",
+    ]
+
+    for fmt in date_formats:
+        try:
+            return datetime.strptime(s, fmt)
+        except:
+            continue
+
+    # 정말 안 될 경우
+    return pd.NaT
+
+
+# 최종 적용
 if "접수일시" in df_voc.columns:
-    df_voc["접수일시"] = pd.to_datetime(
-        df_voc["접수일시"],
-        format="%Y-%m-%d %H:%M:%S.%f",
-        errors="coerce"
-    )
+    df_voc["접수일시"] = df_voc["접수일시"].apply(parse_date_safe)
 
-    valid_dates = df_voc["접수일시"].dropna()
-
-    if not valid_dates.empty:
-        min_d = valid_dates.min().date()
-        max_d = valid_dates.max().date()
-
-        dr = st.sidebar.date_input(
-            "📅 접수일자 범위",
-            value=(min_d, max_d),
-            min_value=min_d,
-            max_value=max_d,
-        )
-    else:
-        dr = None
-else:
-    dr = None
 
 # 지사 필터
 branches_all = sort_branch(df_voc["관리지사"].dropna().unique())
